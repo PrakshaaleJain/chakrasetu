@@ -1,0 +1,71 @@
+"""Start both real servers, verify frontend/proxy and run HTTP rehearsal; then stop."""
+
+from pathlib import Path
+import subprocess, sys, os, time, urllib.request, json, tempfile
+
+root = Path(__file__).resolve().parent
+npm = "npm.cmd" if os.name == "nt" else "npm"
+processes = []
+with tempfile.TemporaryDirectory() as log_dir:
+    logs = []
+    try:
+        for name, command, cwd in [
+            (
+                "backend",
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "app.main:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8000",
+                ],
+                root / "backend",
+            ),
+            ("frontend", [npm, "run", "dev"], root / "frontend"),
+        ]:
+            log = open(Path(log_dir) / (name + ".log"), "w+")
+            logs.append(log)
+            processes.append(
+                subprocess.Popen(command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT)
+            )
+        for url in ["http://127.0.0.1:8000/health", "http://127.0.0.1:5173/"]:
+            deadline = time.monotonic() + 20
+            while True:
+                try:
+                    with urllib.request.urlopen(url, timeout=2) as response:
+                        assert response.status == 200
+                        content = response.read()
+                    break
+                except (OSError, AssertionError):
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Server did not become ready: " + url)
+                    time.sleep(0.1)
+        with urllib.request.urlopen("http://127.0.0.1:5173/api/health") as response:
+            assert json.load(response)["status"] == "ok"
+        with urllib.request.urlopen("http://127.0.0.1:5173/src/main.tsx") as response:
+            assert response.status == 200
+        print(
+            "PASS real FastAPI health, Vite HTML/module serving and Vite → FastAPI proxy",
+            flush=True,
+        )
+        subprocess.run([sys.executable, "demo.py"], cwd=root / "backend", check=True)
+    except Exception:
+        for log in logs:
+            log.flush()
+            log.seek(0)
+            print(log.read())
+        raise
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+        for process in processes:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        for log in logs:
+            log.close()
