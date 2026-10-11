@@ -1,8 +1,29 @@
 import { navigationFor } from "./navigation";
 import { OrganisationPage } from "./Organisation";
 import { useState, useEffect } from "react";
+<<<<<<< HEAD
 import { ArrowUpRight, Leaf, RefreshCw } from "lucide-react";
 import { api, useResource, ApiError } from "./api";
+=======
+import {
+  LayoutDashboard,
+  BatteryCharging,
+  Network as NetworkIcon,
+  Store,
+  Handshake,
+  Route as RouteIcon,
+  Truck,
+  ShieldAlert,
+  ClipboardCheck,
+  ArrowUpRight,
+  Leaf,
+  RefreshCw,
+  Workflow,
+  Sparkles,
+} from "lucide-react";
+import { BatteryLifecycleFlowchart } from "./BatteryLifecycleFlowchart";
+import { api, setToken, useResource, ApiError } from "./api";
+>>>>>>> b275612 (iteration 5)
 import type {
   Actor,
   Battery,
@@ -485,7 +506,32 @@ export default function App() {
               Sign out
             </button>
             <button
+<<<<<<< HEAD
               title="Refresh records"
+=======
+              title="Populate full presentation demonstration data across all stages"
+              aria-label="Load demo data"
+              className="demo-seed-btn"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await api("/demo/seed-presentation", {}, "POST");
+                  setVersion((v) => v + 1);
+                  setNotice("Presentation demonstration data populated across all lifecycle stages.");
+                } catch {
+                  setError("Failed to populate presentation data.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Sparkles size={14} />
+              <span>Load presentation data</span>
+            </button>
+            <button
+              title="Refresh backend records"
+>>>>>>> b275612 (iteration 5)
               aria-label="Refresh"
               onClick={() => setVersion((v) => v + 1)}
             >

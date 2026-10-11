@@ -1,0 +1,7 @@
+{
+  "version": "pathway-screening-1",
+  "automotive_screen_soh": 80,
+  "second_life_screen_soh": 60,
+  "economic_tie_paise": 2500,
+  "description": "Preliminary screening bands only. Application-specific accepted assessments take precedence over screening bands; no automatic disposal threshold."
+}

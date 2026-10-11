@@ -11,6 +11,39 @@ from .enums import Chemistry, Pathway
 router = APIRouter()
 
 
+<<<<<<< HEAD
+=======
+@router.get("/demo/users")
+def demo_users():
+    if not DEMO_MODE:
+        return []
+    return [
+        {
+            "id": id,
+            "name": name,
+            "role": r,
+            "organisation_id": org,
+            "token": f"demo-{id}-local-only",
+            "synthetic": True,
+        }
+        for id, name, r, org in DEMO_ACTORS
+    ]
+
+
+@router.post("/demo/seed-presentation")
+def seed_presentation_endpoint(db=Depends(get_db)):
+    if not DEMO_MODE:
+        fail("FORBIDDEN", "Demo operations are disabled outside DEMO_MODE.", status=403)
+    from .seed_presentation import seed_presentation_data
+
+    seed_presentation_data(db)
+    return {
+        "status": "SUCCESS",
+        "message": "Presentation demonstration fixtures populated.",
+    }
+
+
+>>>>>>> b275612 (iteration 5)
 @router.get("/me")
 def me(user=Depends(current_user)):
     return {

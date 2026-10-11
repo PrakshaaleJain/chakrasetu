@@ -1,0 +1,42 @@
+{
+  "version": "pbs-1",
+  "levels": [
+    {
+      "level": "L1",
+      "title": "Low Apparent Concern",
+      "description": "No obvious physical damage or abnormal behavior has been observed during the preliminary inspection, and no known safety concern has been reported.",
+      "color": "green"
+    },
+    {
+      "level": "L2",
+      "title": "Minor Concerns",
+      "description": "The battery may be degraded, faulty, or previously repaired, but the originator has not identified an obvious acute safety concern.",
+      "color": "lightgreen"
+    },
+    {
+      "level": "L3",
+      "title": "Elevated Concern or Uncertainty",
+      "description": "Concerning observations, unusual behavior, a history of damage, or significant uncertainty about the battery\u2019s condition warrants additional assessment or precautions.",
+      "color": "yellow"
+    },
+    {
+      "level": "L4",
+      "title": "High Safety Concern",
+      "description": "Serious damage, suspected internal failure, significant leakage, or other observations suggest that specialist assessment or controlled handling may be necessary.",
+      "color": "orange"
+    },
+    {
+      "level": "L5",
+      "title": "Critical Hazard Suspected",
+      "description": "An active thermal event, smoke, fire, or another observation indicates a potentially immediate or critical hazard.",
+      "color": "red"
+    }
+  ],
+  "minimum_handling_concern": {
+    "L1": "L1",
+    "L2": "L2",
+    "L3": "L3",
+    "L4": "L4",
+    "L5": "L5"
+  }
+}

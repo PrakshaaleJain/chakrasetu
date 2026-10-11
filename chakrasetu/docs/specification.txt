@@ -1,0 +1,536 @@
+CHAKRASETU
+Complete Product, Workflow, Data and Algorithm Specification
+A Digital Coordination Network for EV Battery Circularity
+Version 1.0 | 10 October 2026 | Hackathon MVP
+
+Document purpose and status
+This specification defines ChakraSetu’s proposed operating logic for registration, eligibility, sale, downstream matching, logistics, capacity reservation, custody, exceptions, receipt, settlement records and final disposition. It is written so a small development team can implement the same rules consistently.
+This is a software/product specification, not legal advice, a battery diagnostic protocol, a safety standard, a transport instruction or a legally reviewed contract. The platform must never claim that a photograph, self-declaration, AI output or synthetic telemetry certifies a battery as safe. Real-world deployment requires qualified review of current law, CPCB/SPCB requirements, transport/handling procedures, insurance, contracts and incident response.
+Requirement labels
+Label | Meaning | Implementation consequence
+MUST | Required for safety boundary, integrity or workflow correctness. | Block progression unless a defined exception path exists.
+SHOULD | Strong default with controlled override. | Require reason and audit event for override.
+MAY | Optional feature. | Core workflow must not depend on it.
+System decision | Deterministic rule or computation. | Return result, rule version and reason codes.
+Human decision | Commercial or qualified judgment. | Record actor, timestamp, rationale, evidence and terms version.
+Estimate | Not a commitment. | Show assumptions, source, uncertainty and expiry.
+
+1. Product definition and scope
+ChakraSetu is a reverse-logistics orchestration system, not just a marketplace. It coordinates battery asset registration, operational screening, downstream pathway discovery, offers, transport quotes, route planning, capacity reservations, physical handovers, transit exceptions, receipt, settlement records and disposition evidence.
+1.1 Core participants
+Participant | Responsibilities | Boundary
+Originator | Register asset; declare owner/custodian/authority; upload evidence; set terms; choose offer; approve changes; confirm handover. | Possession is not proof of ownership. Owner and custodian are separate fields.
+Buyer / downstream operator | Offer price; specify pathway, conditions, required tests/docs; accept/reject receipt; record disposition. | Refurbisher, second-life operator and recycler are different capabilities.
+Transporter | Declare service area, handling scope, capacity, availability; quote and execute shipment. | A self-declared checkbox is not proof of qualification.
+Aggregation hub | Accept eligible assets/batches; reserve capacity; record inbound/outbound custody. | A hub is not automatically qualified for every condition or pathway.
+Network reviewer | Review onboarding/evidence; handle disputes and safety exceptions; audit decisions. | Cannot silently alter accepted commercial terms or erase events.
+Administrator | Configure taxonomies, rules, seed data and access. | Admin action is audited; admin is not a safety certifier.
+
+1.2 MVP must include
+Battery registry and intake validation with explicit UNKNOWN values and evidence provenance.
+Organisation, facility, transporter and capability registries with declared/verified/available values separated.
+Explainable operational screening; candidate receiver matching; direct and one-hub route planning.
+Offers, cost allocation, transporter quotes, approved budget caps, overrun negotiation and no-transporter handling.
+Capacity reservation, shipment state machine, custody timeline, receipt and discrepancy workflow.
+Map view, seeded synthetic network and simulated telemetry with visible SIMULATED labels.
+Settlement status records and final disposition evidence; no real money movement.
+1.3 Explicitly out of scope
+Battery state-of-health diagnosis, remaining-useful-life prediction or safety certification.
+Real GPS/IoT hardware, emergency dispatch, autonomous routing of unsafe batteries.
+Payment gateway, escrow, EPR credit trading, binding legal contract generation.
+Claims that seeded facilities are real, licensed, available or verified.
+Global optimal vehicle routing; MVP only generates feasible direct and one-hub alternatives.
+2. Decision boundaries
+Question | System logic | Human discretion
+Is intake complete? | Validate required fields, types, consistency and provenance. | Originator provides missing data; reviewer resolves contradictions.
+Can a facility accept it? | Filter on pathway, chemistry/form, condition class, verified capability, registration, capacity and time window. | Facility may request inspection or decline with reason.
+Is it safe? | Do not certify. Detect flags/unknowns and route to hold/review. | Qualified person decides scope-specific handling under applicable procedures.
+Which route? | Hard constraints first; rank only feasible candidates. | Parties choose offer and approve quote/cost.
+What if costs rise? | Block booking above approved cap. | Named payer proposes revised cap; affected parties approve.
+Can status be skipped? | State machine forbids invalid transitions. | Exception transition needs authority, reason and audit record.
+What does telemetry mean? | A configured event/threshold was observed or simulated. | Alert is not proof of damage; person reviews.
+
+Core rule: hard constraints are gates, not score penalties. A route cannot compensate for failed safety, registration, compatibility or capacity constraints by being cheaper.
+3. Data model
+Recommended stack: React + Vite + TypeScript; FastAPI + Pydantic; SQLite + SQLAlchemy; Leaflet + OpenStreetMap. Use UTC timestamps, explicit local-time display, integer paise for INR, ISO currency codes, versioned policy/configuration and append-only audit/custody events.
+Entity | Key fields and purpose
+Organisation | id, legal/display name, type, role claims, business identifiers, registered address, status, verification status.
+User | id, organisation_id, name, email, phone, role assignments, active flag.
+Facility | id, organisation_id, name, type, address/coordinates, hours, status.
+FacilityCapability | facility_id, pathway, chemistry/form/condition accepted, handling class, capacity/unit, available capacity, validity, verification status.
+BatteryAsset | id, owner_org_id, custodian_org_id, current_holder_org_id, chemistry, form, application, make/model, restricted serial, capacity, mass, quantity, condition, damage flags, location, status, provenance.
+EvidenceDocument | id, linked object, type, file URI, uploader, timestamp, version, checksum, visibility, extracted fields, review status.
+Listing | id, asset/batch, seller, mode, price/basis, terms, visibility, expiry, status.
+Offer | id, listing, buyer, pathway, price, included/excluded costs, inspection conditions, evidence requirements, expiry, version/status.
+SaleTransaction | id, selected offer, parties, accepted terms snapshot/version, payer/cost cap, status.
+TransportQuote | id, transaction, transporter, route version, price, scope, inclusions/exclusions, capacity, window, validity, status.
+RoutePlan | id, transaction, origin/destination/hub, legs, distance/time/cost estimates, assumptions, constraint results, score, version/status.
+CapacityReservation | resource, quantity, interval, HELD/COMMITTED/RELEASED/EXPIRED, expiry.
+Shipment + ShipmentItem | shipment, transaction, route, transporter, dates/status; per-asset IDs, mass/quantity and handover snapshot.
+CustodyEvent | asset/shipment, event type, previous/new holder, time, location, actor, evidence, notes; append-only.
+TelemetryEvent | shipment, timestamp, location, temperature/shock if used, SIMULATED/DEVICE source, rule version, alert state.
+ExceptionCase | object, category, severity, opened time, owner, status, evidence, next action, due date, resolution.
+DispositionRecord | asset, receiving organisation/facility, outcome, timestamp, actor, evidence, review status.
+AuditEvent | actor, action, object, before/after references, time, reason, request/idempotency key.
+
+3.1 Controlled values and units
+Field | Allowed values / rule
+Chemistry | LFP, NMC, NCA, LCO, LMO, lead-acid, NiMH, other, UNKNOWN. Never infer from vehicle make without verified evidence.
+Form | CELL, MODULE, PACK, LOOSE_COMPONENT, UNKNOWN.
+Reported condition | WORKING, DEGRADED, NON_FUNCTIONAL, DAMAGED_REPORTED, UNKNOWN. Not a safety rating.
+Safety/handling screen | NO_FLAG_REPORTED, FLAG_PRESENT, UNKNOWN, QUALIFIED_REVIEW_REQUIRED, CLEARED_FOR_SPECIFIC_HANDLING, NOT_CLEARED. Clearance records reviewer, scope and expiry.
+Pathway | REPAIR_REFURBISHMENT, SECOND_LIFE_ASSESSMENT, RECYCLING, QUALIFIED_REVIEW, HOLD_PENDING_INSTRUCTIONS.
+Units | Mass kg, energy kWh, distance km, timestamps ISO 8601, money integer paise + currency.
+Verification | UNVERIFIED, DOCUMENT_SUBMITTED, UNDER_REVIEW, VERIFIED, EXPIRED, SUSPENDED, REJECTED.
+Provenance | SELF_DECLARED, DOCUMENT_EXTRACTED, DOCUMENT_REVIEWED, INSPECTION_REPORTED, SYSTEM_DERIVED, UNKNOWN.
+
+UNKNOWN is not zero, false, safe or not applicable.
+Extracted document values are drafts until confirmed; extraction must not overwrite confirmed values.
+Contradictory evidence creates an exception; preserve both versions.
+Every derived field stores rule/configuration version and input snapshot.
+Attachments are versioned, access-controlled, file-type/size validated and never silently overwritten.
+4. Organisation, facility and transporter onboarding
+4.1 Fields
+Field | Requirement | Validation
+Legal name, organisation type/roles | Required for real participant; seeded demo value for synthetic participant. | Non-empty; duplicates warn, do not auto-merge.
+Address and operating locations | Required. | Separate registered address from facility/pickup location.
+Authorised contact | Required. | Validate format; private by default.
+Business/registration evidence | Conditional on activity and law; mock evidence in demo. | Record issuer, jurisdiction, number, scope, expiry, document and review state.
+Qualifications/insurance | Conditional on actual activity and applicable rules. | Uploaded document is not automatically verified.
+Facility capability | Required for matching. | Separate declared capability, verified capability and live available capacity.
+Transporter service area/capacity/hours | Required for quote eligibility. | Define geographic coverage, blackout dates, lead time and handling scope.
+
+4.2 Onboarding algorithm
+Create organisation as PENDING_REVIEW; record identity, contacts, role claims, operating locations and evidence.
+Run schema/duplicate checks. Missing fields → NEEDS_INFORMATION; identity or registration conflict → REVIEW_REQUIRED.
+Reviewer checks identity, document validity, activity scope and registration evidence. Record decision, evidence and expiry.
+Verify each capability separately. Identity verification does not verify every facility capability or current capacity.
+Before each booking, recheck capability, registration validity, expiry, operational status, capacity and receiving hours.
+If a capability is expired/suspended, block new affected bookings and create a reason-coded exception. Do not delete history.
+Edge cases: registration is valid but not for the proposed activity; facility is registered but closed; capacity was already allocated; user leaves the organisation; a document expires before pickup; reviewer rejects extracted text. Each must return an explicit reason code.
+5. Battery intake fields and validation
+5.1 Required at draft/intake
+Field | Requirement | Why
+Originator organisation | Required. | Submitting party.
+Owner and custodian | Required; may be same. | Legal ownership differs from physical possession.
+Authority to transfer | Required before listing/contract; may be pending in draft. | Unclear authority blocks sale.
+Internal asset ID | Required; manufacturer/serial if available. | Avoid duplicate allocation; serial may be unknown/restricted.
+Chemistry and form | Value or explicit UNKNOWN. | No assumptions from brand/model.
+Removal reason | Required: degradation, fault, impact/accident, maintenance replacement, end-of-life, unknown, other. | Supports screening, not diagnosis.
+Condition | Reported/inspected value or UNKNOWN, with source/date. | Provenance is visible.
+Damage/incident questionnaire | Must answer YES/NO/UNKNOWN for each critical item. | Collision/crush, swelling/deformation, leakage, heat, smoke/fire, odour, exposed conductors, water/flood, impact/drop, thermal event, unknown history.
+Quantity and mass | Quantity required; mass where available/needed or explicit UNKNOWN. | Unknown mass is never zero.
+Pickup location/access | Required before route planning. | Address/pin, window, access notes, contact.
+Declaration/evidence | Declaration required; further documents conditional on pathway. | Service report, photos, invoice, ownership evidence, test report.
+
+5.2 Optional but recommended
+Manufacturer/model/serial, manufacture/in-service date, nominal voltage/capacity/energy/mass, vehicle application, last service date, BMS report/fault codes, test report, warranty/recall reference and prior repair history.
+Photo set of external views, label/nameplate, connector area and visible damage. Do not ask an unqualified user to open a pack or perform an unsafe inspection.
+Battery passport/QR if available; collection preferences; loading access; preferred date/time; seller price expectation; whether conditional offers are acceptable.
+Free-text notes and attachments. Free text supplements structured flags and cannot override them.
+5.3 Intake logic
+validate_intake(asset):  if schema_errors(asset): return NEEDS_INFORMATION  if transfer_authority_unconfirmed: return REVIEW_REQUIRED  if duplicate_or_conflicting_identity: return REVIEW_REQUIRED  if any critical damage flag == YES:      create_exception(SAFETY_OR_DAMAGE_FLAG, HIGH)      return HOLD_PENDING_QUALIFIED_REVIEW  if any critical damage flag == UNKNOWN:      return REVIEW_REQUIRED(SAFETY_SCREEN_INCOMPLETE)  if chemistry/form unknown:      return READY_FOR_SCREENING_WITH_RESTRICTIONS      # only candidates explicitly accepting unknowns can pass  return READY_FOR_SCREENING
+‘No damage reported’ means only that no damage was reported. It is not a safety certificate. Serious warning signs, uncertain incident history or contradictory reports trigger hold/review. The software must not provide improvised DIY handling/packaging instructions.
+6. Safety and uncertainty policy
+ChakraSetu coordinates evidence and decisions; it does not diagnose battery safety. Safety status is independent of commercial condition and pathway.
+Case | Automatic action | Next recipient/action
+No warning sign reported; required evidence present | Proceed to ordinary eligibility screening; label ‘no flag reported’, never ‘safe’. | Only participants matching capability and handling scope.
+Critical warning sign: thermal/fire event, smoke, leakage, deformation, exposed conductors, severe impact, etc. | Hold ordinary listing, route and booking; create high-priority exception. | Originator safety contact + platform reviewer; obtain qualified assessment/instructions.
+Unknown history or conflicting reports | REVIEW_REQUIRED or HOLD according to configured severity. | Reviewer requests evidence/inspection; no automatic downgrade to normal.
+Qualified reviewer gives written scoped decision | Store reviewer, qualification evidence, date, scope, conditions, expiry and report; re-run constraints. | Only participants matching documented scope.
+No eligible specialist/recipient found | Remain on hold; show ‘no eligible participant currently available’. | Manual network-operator outreach to qualified parties, producer take-back route or competent authority process as appropriate.
+Incident in transit | High-priority exception; stop ordinary state progression; notify designated contacts. | Transporter follows approved emergency procedures and contacts appropriate services/authorities. Platform does not improvise instructions.
+
+6.1 Exact potentially-unsafe battery workflow
+A flag appears at intake, inspection, pickup, transit or receipt. Freeze ordinary offers/route/booking for the affected asset.
+Create ExceptionCase: category, severity, source, time, evidence, owner, next action and due date. Notify originator and designated reviewer.
+Collect evidence; do not ask unqualified users to open, test, discharge, isolate or physically manipulate the battery.
+Reviewer selects: information insufficient; qualified assessment required; written clearance for a defined scope; controlled transfer to a specifically eligible recipient under documented instructions; or escalation to producer take-back/competent process.
+Search only participants whose verified capability matches the documented scope. If none match, create manual outreach task; never relax constraints silently.
+Any resulting plan must identify handling scope, responsible parties, evidence, cost/liability terms and explicit acceptance.
+At handover/receipt, capture identity, timestamp, condition discrepancy and evidence. If condition is outside approved scope, pause and reopen review.
+Close only when authorised reviewer records resolution and evidence. Keep the original alert in history.
+6.2 Why ‘unsafe = recycler’ is wrong
+A recycler, hub or transporter is not automatically appropriate for every battery condition. A damaged battery may require specialist assessment, handling or transport arrangements before movement. Recipient selection must follow documented capability and applicable instructions, not a generic role label. For the demo, seed a synthetic ‘Qualified Review / Controlled Handling Partner’ with explicit capabilities and label it synthetic; do not imply it is a real authorised operator.
+6.3 India compliance boundary
+India’s Battery Waste Management Rules cover batteries across chemistries and involve consumers, collection, transport, refurbishment and recycling actors. CPCB’s Battery EPR portal lists the Rules and subsequent amendments/guidance and describes centralised registration for producers, recyclers and refurbishers. ChakraSetu should record relevant registration evidence and verification state, but must not claim to certify legal compliance or replace CPCB/SPCB records. Check current amendments and applicable requirements before any real deployment.
+Sources: CPCB Battery Waste EPR Portal: https://eprbattery.cpcb.gov.in/ ; CPCB-hosted Battery Waste Management Rules, 2022: https://eprbattery.cpcb.gov.in/upload/adminDoc/Battery-WasteManagementRules-2022.pdf ; PIB/Environment Ministry overview: https://www.pib.gov.in/PressReleasePage.aspx?PRID=1854433&lang=2&reg=3
+7. Listing and eligible audience
+7.1 Listing fields
+Field | Requirement | Rule
+Listing mode | Required: fixed asking price, invite offers, request assessment/quote. | Request assessment is suitable when value/condition is uncertain.
+Price expectation | Optional for invite-offers; required for fixed price. | Basis: per asset/kg/pack/batch; currency; tax inclusion.
+Preferred pathway | Optional. | Preference never overrides constraints.
+Seller terms | Structured terms + optional free text. | Pickup window, inspection, payment, costs, expiry, cancellation.
+Visibility/expiry | System-managed; expiry required. | Eligible parties see only necessary data; expired listings may be renewed.
+
+7.2 Eligibility predicate
+eligible_buyer(buyer, asset, listing):  require buyer.active and role_verified_for_activity  require facility.active and required_registration_valid  require capability_matches(chemistry, form, condition, pathway)  require capacity_available(quantity, known_mass, time_window)  require safety_scope_matches(asset.safety_status)  require required_docs_and_transfer_authority_present  return TRUE# Every failure returns a reason code; unknown critical values fail closed.
+Reason codes include CHEMISTRY_NOT_ACCEPTED, CAPACITY_INSUFFICIENT, REGISTRATION_EXPIRED, SAFETY_SCOPE_MISMATCH, FACILITY_CLOSED, AUTHORITY_UNVERIFIED and DOCUMENT_MISSING.
+7.3 No eligible buyer
+Keep the asset record; do not force a listing into the network.
+Show exclusions and distinguish missing data from a real network gap.
+Offer actions: provide data, request qualified review, expand permitted geography, change preferred pathway, ask for manual outreach, or keep listing open.
+Re-run every hard constraint after a change. Manual outreach is not a booking until the party is onboarded, verified and accepts.
+Log organisation contacted, response, timestamp and outcome.
+8. Offers, negotiation and sale agreement
+8.1 Offer fields
+Field | Requirement
+Buyer/facility | System-supplied; eligibility rechecked at submission and acceptance.
+Intended pathway | Required; must match facility capability.
+Price/basis/tax | Required amount, currency, per asset/kg/pack/batch, gross/net and tax treatment.
+Inspection condition | Required: firm subject to stated checks; conditional on inspection; or indicative non-binding.
+Cost breakdown | Required included/excluded collection, transport, hub, handling, testing, processing, tax and other charges.
+Acceptance criteria | Required for conditional offers: what evidence/outcome can change price or acceptance.
+Expiry and pickup window | Required or explicitly negotiable.
+Required docs/tests | Conditional; each requirement has owner and due stage.
+Notes/attachments | Optional; cannot override structured fields.
+
+8.2 Offer comparison
+Compare gross purchase price, who pays each cost, estimated net proceeds, inspection contingency, pickup window, expiry, payment terms, pathway and unresolved conditions. Do not rank on purchase price alone.
+seller_net_estimate = purchase_price  - seller_pays_transport  - seller_pays_hub_handling  - seller_pays_other_charges  - seller_borne_tax_or_fees# If any required cost is unknown: show NET ESTIMATE INCOMPLETE, not zero.# Subtract only costs the seller contractually bears.
+The platform may sort by the seller’s selected objective (net proceeds, earliest feasible pickup, lowest seller cost, preferred pathway), but the seller chooses. Record the choice and rationale.
+8.3 Terms confirmation
+Seller selects an offer; revalidate buyer, facility, expiry, evidence and asset availability.
+Snapshot price/basis, pathway, inspection condition, cost allocation, logistics obligations, acceptance criteria, payment timing, cancellation terms and required documents.
+Seller and buyer must accept the same terms version. Any material edit creates a new version and requires both parties to confirm again.
+Only then create transaction status AGREED_PENDING_LOGISTICS.
+Inspection-based price revision requires evidence, reason, new amount and explicit counterparty acceptance. Preserve old terms; never silently overwrite them.
+The MVP records a workflow and is not a legally reviewed contract generator.
+9. Route planning and matching
+9.1 Candidate generation
+for destination in eligible_receivers(asset):    evaluate(source -> destination)    for hub in eligible_hubs(asset):        if feasible(source -> hub) and feasible(hub -> destination):            evaluate(source -> hub -> destination)candidate_set = feasible paths onlyreturn ranked candidates + rejected candidates with reason codes
+9.2 Hard constraints
+Constraint | Pass condition | Failure
+Destination capability | Accepts chemistry/form/condition/pathway. | DESTINATION_INCOMPATIBLE.
+Safety scope | All facilities and transport legs match scoped handling requirements. | Hold; no ordinary route.
+Registration | Required evidence valid at planned service date. | Reject or review.
+Transporter | Handling scope, service area, capacity and availability match. | Reject candidate.
+Capacity | Known quantity/mass fits vehicle, hub and receiver capacity in the time interval. | Reject; no treating unknown mass as zero.
+Time | Pickup/transit/receiving windows overlap. | Reject or propose alternate time.
+Authority/docs | Required authority/documents present at the relevant milestone. | Block booking/dispatch.
+Budget/terms | Cost within approved cap or revised cap explicitly accepted. | No booking above cap.
+Hub | Compatible scope, capacity, operating window and onward leg. | Reject hub path.
+Duplicate allocation | Asset not already committed to another active shipment. | Block.
+
+9.3 Cost and time estimation
+Use transporter quotes or verified rate cards. Without them, any distance/time proxy must be labelled as an estimate, not a market quote.
+if valid_transporter_quote:    leg_cost = quote.totalelif verified_rate_card:    leg_cost = fixed_fee + distance_km * rate_per_km + known declared feeselse:    leg_cost = UNKNOWNroute_cost = sum(leg costs) + known hub/handling feescost_status = COMPLETE only if every required component is known# Unknown is not zero. Preserve source, timestamp and uncertainty for each estimate.
+For route ranking, apply hard constraints first. For feasible routes:
+J(r) = wc*C_norm(r) + wt*T_norm(r) + wh*H(r) + wu*U(r)# Illustrative demo defaults when comparable cost data exists:J = 0.60*C_norm + 0.25*T_norm + 0.10*H + 0.05*U# If cost data is incomplete, use a separate time/handling/uncertainty objective;# never rank an unknown-cost route as if its cost were zero.x_norm = (x - min(x)) / (max(x) - min(x))# If max == min, set all normalised values to 0.
+Weights are visible configuration, not scientific truths. Display every score component, assumption and reason. Plans expire when quote, capacity, registration, safety scope, facility hours or terms change.
+10. Transport quote, budget overrun and no-acceptance
+10.1 Define who pays before quote collection
+Commercial setup | Rule
+Buyer pays, cap B | Quote Q <= B may be accepted by buyer; Q > B requires buyer’s explicit cap increase or renegotiation.
+Seller pays, cap S | Apply same cap; recompute seller net proceeds before approval.
+Offer includes transport up to cap C | Overage belongs to the named party only if accepted terms explicitly say so.
+Fixed-price door-to-door offer | Buyer bears variance only if terms say so; no surprise pass-through to seller.
+Payer/cost allocation undefined | Block final agreement/booking with NEEDS_COMMERCIAL_CLARIFICATION.
+
+10.2 Quote acceptance algorithm
+Q = quote.totalB = approved_budget_for_named_payerif quote.expired or quote.incomplete: reject_as_unusable()elif quote.scope != current_shipment_scope: request_revision()elif Q <= B: require_payer_acceptance()else:    block_booking()    show_overrun = Q - B    options = [seek_another_quote, change_window, feasible_hub_route,               payer_proposes_new_cap, renegotiate_sale_terms, cancel_under_terms]    if affected_parties_approve_new_terms:        version_terms(); recompute_totals()    else:        remain_logistics_pending_or_cancelled
+10.3 Example
+Illustration only: battery price is ₹20,000; buyer agreed to pay transport up to ₹3,000. All transporters decline at that level; lowest valid quote is ₹4,200. ChakraSetu must not book and later surprise either party. It shows a ₹1,200 overrun and seeks another quote or explicit buyer cap increase/terms amendment. If seller pays transport, recompute seller net proceeds. If nobody approves, shipment remains unbooked; parties may reschedule, revise route or cancel under agreed terms.
+10.4 No transporter accepts
+At the quote-round deadline, mark NO_ACCEPTANCE; do not mark shipment booked.
+Show known cause: budget, coverage, handling mismatch, capacity, time window, declined, or no response. Do not conflate decline with silence.
+Offer: extend quote round, shift pickup date, seek other eligible transporters/geography, test a feasible hub route, adjust compatible batch size, renegotiate cost allocation or cancel/reschedule.
+Every alternative reruns all hard constraints; wider geography never bypasses qualification or safety requirements.
+Do not split a shipment unless per-asset integrity, receiver acceptance, capacity, costs and party approval all permit it.
+After a configurable number of rounds (demo default 2), open a human-owned logistics exception.
+Keep sale status separate from shipment status; transaction can be agreed while logistics are pending.
+10.5 Quote schema
+Total, currency, taxes, included/excluded costs, validity, timestamp, transporter, handling scope, pickup window, ETA source, distance source, capacity and qualification status.
+Cancellation/no-show/waiting terms, tolls, loading/unloading responsibility, route restrictions and applicable insurance/liability evidence.
+Quote ties to exact load, route and time window. Changes in count, weight, route, hub, handling or schedule trigger revalidation/requote.
+11. Capacity reservations
+reserve(resource, quantity, interval):  begin transaction; re-read capacity and active reservations  available = declared_capacity - committed - unexpired_held  if resource inactive or interval invalid or available < quantity: rollback; fail  create HELD reservation with expiry; commitwhen required parties confirm: atomically HELD -> COMMITTED; create shipmenton failure/expiry/cancel: HELD -> RELEASED or EXPIRED
+A route plan is not a reservation; quote acceptance is not necessarily a confirmed booking. Avoid double allocation. Expired holds do not consume capacity. For the SQLite demo, use database transactions and document that multi-instance production deployment needs stronger concurrency control.
+12. Shipment states and custody
+State | Allowed next state(s) | Required evidence/action
+DRAFT | AWAITING_QUOTES, CANCELLED | Route and load scope.
+AWAITING_QUOTES | AWAITING_PAYER_APPROVAL, BOOKED, LOGISTICS_EXCEPTION, CANCELLED | Quotes, declines, timeout.
+AWAITING_PAYER_APPROVAL | AWAITING_QUOTES, BOOKED, LOGISTICS_EXCEPTION, CANCELLED | Explicit payer acceptance.
+BOOKED | PICKUP_SCHEDULED, CANCELLED | Committed reservations and terms.
+PICKUP_SCHEDULED | PICKED_UP, PICKUP_FAILED, EXCEPTION_HOLD | Actor, time, location, IDs and condition snapshot.
+PICKUP_FAILED | PICKUP_SCHEDULED, LOGISTICS_EXCEPTION, CANCELLED | Failure reason and reschedule/cancel decision.
+PICKED_UP | IN_TRANSIT, EXCEPTION_HOLD | Confirmed handover and dispatch.
+IN_TRANSIT | ARRIVED_PENDING_RECEIPT, EXCEPTION_HOLD | Transit events.
+ARRIVED_PENDING_RECEIPT | RECEIVED, RECEIPT_DISPUTED, EXCEPTION_HOLD | Receiver, items, condition, discrepancies.
+RECEIPT_DISPUTED | RECEIVED, RETURN_OR_REDIRECT_PENDING, EXCEPTION_HOLD | Review and agreed outcome.
+RECEIVED | DISPOSITION_PENDING, CLOSED, EXCEPTION_HOLD | Receipt event; not automatically final processing.
+DISPOSITION_PENDING | CLOSED, EXCEPTION_HOLD | Disposition evidence and closure checks.
+EXCEPTION_HOLD | Authorised resume to prior workflow or CANCELLED | Reviewer resolution; explicit transition.
+CLOSED/CANCELLED | No ordinary transition | Correction uses compensating event; new shipment gets new ID.
+
+12.1 Pickup protocol
+Confirm appointment, transporter, asset IDs, quantity, handover/receiving parties, condition snapshot and documents.
+Capture originator/custodian and transporter confirmations; record which party confirmed.
+If physical condition differs, do not force pickup; record discrepancy and hold for qualified review/party decision.
+Record failed pickup reason: site inaccessible, no contact, load unavailable, condition discrepancy, vehicle unavailable, documentation issue or other.
+Custody changes only on confirmed physical handover, never merely because scheduled time passed.
+12.2 Transit and simulated telemetry
+Event | Action | Does not mean
+Route deviation | Alert; show planned vs observed/simulated route; request transporter confirmation. | Does not prove damage or misconduct.
+Prolonged stop | Delay alert after configured duration; request reason/ETA. | Does not prove incident.
+Synthetic temperature/shock threshold | Mark SIMULATED; create review alert under demo policy. | Not a real calibrated safety threshold or diagnosis.
+Missing custody event | Open chain-of-custody exception; request confirmation. | Does not prove custody was lost.
+Reported smoke/fire/impact/thermal event | High-priority exception; follow approved emergency-contact escalation. | Platform does not improvise emergency instructions.
+
+12.3 Receipt protocol
+Receiver verifies shipment/asset IDs, count, arrival, condition and documents.
+Record ACCEPTED, PARTIALLY_ACCEPTED, REJECTED or RECEIVED_PENDING_INSPECTION; partial receipt is per asset.
+Custody transfers only for physically accepted assets. Disputed assets keep a recorded holder/custody status.
+Missing/wrong/damaged items or missing documents create ExceptionCase and may pause settlement.
+Receipt is not equivalent to refurbishment, second-life deployment or recycling completion.
+13. Aggregation and consolidation
+Consolidation can reduce per-unit logistics cost but adds handling, dwell time, capacity and custody complexity. Support compatible batches only; require hub/operator approval.
+can_consolidate(batch, hub, destination):  require every asset has compatible documented handling scope  require no asset is HOLD or awaiting safety review  require hub accepts every chemistry/form/condition/pathway  require combined known mass <= hub and vehicle capacity  require documents/authority and destination acceptance  require dwell and onward dispatch windows feasible  return TRUE
+Unknown mass cannot be zero. In the MVP, mark the batch infeasible until required quantity is known. Compare direct vs hub cost only when cost scope is equivalent and components complete. If any required cost is unknown, say comparison is incomplete rather than claiming consolidation is cheaper.
+direct_cost = sum(valid direct quotes) or UNKNOWNhub_cost = first_leg + hub_handling + dwell_cost + second_legif both complete and constraints pass:    saving = direct_cost - hub_costelse:    saving = UNKNOWN
+Hub plan must specify inbound reservation, hub capacity, inbound custody event, dwell window, outbound batch, second-leg transporter, destination acceptance and per-asset receipt. If a leg fails, show physical location and custodian for every asset.
+14. Inspection, settlement and final disposition
+14.1 Inspection outcomes
+Outcome | System behaviour
+Accept as agreed | Record result, evidence, inspector and date.
+Accept with revised price | Create revision proposal with evidence/reason/new version; require explicit counterparty approval.
+Request further inspection | Set pending; assign responsible party, payer and due date.
+Reject intended pathway | Hold or propose new eligible pathway; rerun screening. Never auto-redirect.
+Possible hazard found | Freeze normal flow; invoke Section 6 exception.
+Price disagreement | Preserve old agreement; hold or terminate only under agreed terms.
+
+14.2 Settlement record
+The MVP records, but does not move, money. Fields: gross amount, currency, payer/payee, cost breakdown, deductions/fees and cost bearer, invoice/reference attachment, due date, status, reported/confirmed date, reference, dispute reason and confirming actor.
+Statuses: NOT_DUE, DUE, PAYMENT_REPORTED, SETTLED_CONFIRMED, DISPUTED, OVERDUE, CANCELLED.
+‘Payment reported’ is not ‘settled confirmed’. Record who confirmed and evidence/reference.
+Partial settlement requires agreement and separate instalment records.
+Any logistics-cost change updates ledger and requires approval before booking/charge allocation.
+14.3 Disposition
+Record separate outcomes: REFURBISHMENT_COMPLETED, SECOND_LIFE_ASSESSMENT_COMPLETED, SENT_FOR_RECYCLING, RECYCLING_COMPLETED, TRANSFERRED_TO_ELIGIBLE_OPERATOR, REJECTED/RETURNED or PENDING_FURTHER_ASSESSMENT.
+Required: asset, receiving facility/org, date, outcome, actor, evidence or reason pending, and self-reported/reviewed status.
+‘Sent for recycling’ is not ‘recycling completed’. Do not generate statutory certificates in the MVP.
+Close only when configured commercial, custody and disposition conditions pass, or a documented exception/contractual closure path applies.
+15. Roles and visibility
+Data/action | Originator | Buyer/facility | Transporter/hub | Reviewer
+Edit draft asset | Own assets | No | No | Review/support; audited
+See seller identity/contact | Own | When transaction requires | Only job-required subset | Role-controlled
+See condition/docs | Own | Eligible buyer as needed | Handling/execution subset | Yes
+Submit/accept offer | Seller accepts | Buyer offers | No | No commercial override
+Quote/accept transport | If payer/authorised | If payer/authorised | Own quote/booking | Audit/exception only
+Confirm custody | At handover | At receipt if receiver | At handover/transit | Audit; correction by new event
+Change accepted terms | Propose/approve if affected | Approve if affected | Approve own quote changes | Cannot silently change
+Resolve safety exception | Provide info; cannot self-clear | Only if qualified/authorised | Report incident/follow procedures | Coordinate/review/escalate
+Audit history | Own transaction subset | Own transaction subset | Own job subset | Full audit
+
+Apply least privilege. Hide personal phone numbers, precise private addresses, serial numbers and documents until operationally needed. Even if demo authentication is simple, API actions must check role and resource relationship.
+16. API contract outline
+Endpoint | Purpose | Hard rule
+POST /organisations, /facilities, /transporters | Onboarding. | Pending verification; capability verification separate.
+POST/PATCH /batteries | Create/update draft. | Unknown values/provenance; preserve history.
+POST /batteries/{id}/screen | Run validation/screening. | Reason codes; no safety certification.
+POST /listings; GET /listings/{id}/eligible-buyers | List and find eligible receivers. | Authority, status, capability and scope gates.
+POST /listings/{id}/offers; POST /offers/{id}/accept | Offer and selection. | Recheck eligibility/expiry; version terms.
+POST /transactions/{id}/confirm | Confirm terms. | Both parties must accept same version.
+POST /transactions/{id}/route-plans | Generate routes. | Hard constraints then explainable ranking.
+POST /transactions/{id}/transport-quotes; POST /quotes/{id}/accept | Quote/accept. | Check scope, expiry, payer cap and approval.
+POST /transactions/{id}/reserve-capacity | Reserve resources. | Atomic capacity check.
+POST /shipments/{id}/events | Pickup/transit/receipt. | State transition and actor permissions.
+POST /shipments/{id}/telemetry | Ingest telemetry. | Label SIMULATED/DEVICE; version thresholds.
+POST /exceptions/{id}/resolve | Resolve exception. | Authorised reviewer, reason and evidence.
+POST /batteries/{id}/disposition | Record outcome. | Receipt != disposition.
+GET /audit/{type}/{id} | Read history. | Authorised append-only event stream.
+
+Mutating APIs return object, resulting status, events and structured errors: {code, message, field?, blocking, next_action?}. Use idempotency keys for accept offer, reserve capacity, create shipment, pickup and receipt so retries cannot duplicate actions.
+17. State machines and invariants
+Battery state | Meaning / permitted transition
+DRAFT | Data entry; can move to NEEDS_INFORMATION, REVIEW_REQUIRED, READY_FOR_SCREENING or CANCELLED.
+NEEDS_INFORMATION | Missing data; returns to DRAFT/READY_FOR_SCREENING or REVIEW_REQUIRED.
+REVIEW_REQUIRED | Authority, safety, identity or contradictory evidence; only authorised resolution advances.
+READY_FOR_SCREENING | Intake complete; moves to READY_FOR_LISTING, NEEDS_INFORMATION or HOLD.
+READY_FOR_LISTING | Preliminary gates pass, not safety certification; moves to LISTED or HOLD.
+LISTED | Visible to eligible buyers; moves to OFFER_SELECTED, WITHDRAWN, EXPIRED or HOLD.
+OFFER_SELECTED | Awaiting mutual terms; moves to AGREED, LISTED or CANCELLED.
+AGREED | Terms confirmed; logistics pending or active; may be DISPUTED/HOLD.
+IN_SHIPMENT | Physical logistics active; moves to RECEIVED, HOLD or DISPUTED.
+RECEIVED | Physical receipt; moves to DISPOSITION_PENDING, DISPUTED or HOLD.
+DISPOSITION_PENDING | Outcome evidence outstanding; moves to DISPOSITION_RECORDED or HOLD.
+DISPOSITION_RECORDED | Downstream outcome recorded; close or start a new transaction.
+HOLD | No ordinary progression; authorised reasoned resume or cancellation only.
+CLOSED/CANCELLED/WITHDRAWN/EXPIRED | History retained; no ordinary transitions. New activity uses new record.
+
+17.1 Non-negotiable invariants
+No sale without transfer authority.
+No ordinary route/booking for a safety-held asset.
+No destination recommendation without matching capability and pathway.
+No booking without accepted terms, valid quote, cost allocation, approvals and committed reservations.
+No reservation beyond capacity or after expiry.
+No custody transfer without confirmed physical handover evidence.
+No automatic price, payer or cost-overrun change.
+No duplicate active allocation for one asset unless an explicit partial-batch model permits it.
+No receipt-to-recycling-completion shortcut.
+No deleting critical events; correct via compensating events.
+No unknown critical value silently becomes safe, compatible, zero cost or zero mass.
+Every exception has owner, status, timestamp, next action and resolution evidence.
+Every recommendation can be reproduced from input snapshot and rules/configuration version.
+17.2 Duplicate requests
+Use idempotency keys or duplicate-event detection for offer acceptance, capacity reservation, shipment creation, pickup and receipt. Repeated taps/retries must not create two shipments, reserve capacity twice or transfer custody twice.
+18. Exception catalogue
+Exception | Trigger | System response / owner
+MISSING_DATA | Required field/document absent. | Block stage; show exact fields; responsible participant supplies data.
+TRANSFER_AUTHORITY_UNCLEAR | Owner/agent authority unresolved. | Block sale; originator/reviewer resolves.
+POSSIBLE_DUPLICATE | Identity conflict. | Review; no duplicate allocation.
+SAFETY_FLAG | Damage/incident/unknown serious risk. | Hold ordinary flow; safety reviewer/qualified party.
+NO_ELIGIBLE_RECEIVER | No candidate passes constraints. | Explain exclusions; originator/network operator performs constrained outreach.
+NO_TRANSPORTER | No quote accepted by deadline. | Logistics exception; payer/parties reschedule, reprice or cancel.
+QUOTE_OVER_BUDGET | Quote exceeds cap. | Block booking; named payer proposes amendment; affected parties approve.
+QUOTE_SCOPE_CHANGED | Load/route/window changed. | Invalidate/revalidate quote; transporter reissues.
+CAPACITY_CONFLICT | Resource filled before reservation. | Fail reservation; regenerate candidates.
+PICKUP_FAILED | No handover/load/site access. | Record reason; reschedule/cancel.
+CONDITION_MISMATCH | Physical condition differs. | Pause and review; do not overwrite original declaration.
+TRANSIT_ALERT | Delay/deviation/synthetic sensor alert. | Record source; notify and assign review.
+RECEIPT_DISPUTE | Wrong/missing/damaged item or documents. | Per-item dispute; pause affected settlement.
+PRICE_DISPUTE | Price revision rejected. | Preserve original terms; parties negotiate/terminate under terms.
+PAYMENT_OVERDUE | Due date passed. | Flag, notify, retain status until evidenced.
+DISPOSITION_MISSING | Receipt but no final outcome. | Keep pending; follow up with receiver.
+REGISTRATION_EXPIRED | Evidence invalid before action. | Block affected new booking; renew or choose eligible alternate.
+
+19. Non-functional requirements
+Explainability: every blocked action and recommended route includes rule codes and plain-language reasons.
+Auditability: actor, role, timestamp, object, action, state change, reason and evidence reference.
+Privacy: least privilege; minimise exposure of contacts, addresses, serials and documents.
+Security: validate uploads, limit file type/size, protect secrets, avoid executing uploaded content.
+Reliability: schema validation, deterministic matching, seed/reset script, tests for invalid transitions and capacity races.
+Reproducibility: save rules version, configuration, input snapshot and estimate sources.
+Usability: accessible status labels, keyboard-friendly forms, map plus textual route details.
+Demo transparency: all synthetic actors, quotes, prices, GPS, telemetry, capacities and verification states visibly labelled example data.
+Failure visibility: API errors must not appear as successful actions.
+20. Configurable MVP defaults
+Configuration | Demo default | Caveat
+Hub stops | Maximum one intermediate hub. | Scope control, not a universal logistics rule.
+Routing | Haversine/seeded distance proxy. | Not live road routing or guaranteed ETA.
+Quote rounds | Two rounds then human exception; manual close allowed. | Operational demo choice.
+Cost ranking | Lowest valid comparable cost; otherwise time/distance proxy. | Incomplete cost is never zero.
+Capacity hold | Configurable TTL; manual expiry permitted for demo. | No indefinite holds.
+Telemetry | Synthetic stream and demo thresholds. | Not calibrated or safety-certified.
+Settlement | Record-only. | No money movement.
+Verification | Seeded/mock status for demo. | Never represent as real verification.
+Safety escalation | Hold + reviewer task + synthetic qualified-review partner. | No auto-assignment to real recipient.
+
+21. Testing and definition of done
+21.1 Unit tests
+Absent/UNKNOWN/zero/false are distinct.
+Every hard constraint returns a correct reason code.
+Route scoring deterministic; handles ties, incomplete cost and equal min/max.
+Over-cap quote blocks booking; revised cap requires approval.
+Reservations cannot overbook; released/expired holds free capacity.
+Illegal state transitions and duplicate events are rejected.
+Custody event records previous/new holder and actor/time.
+Safety-held assets cannot enter ordinary route generation.
+Expired registration/capability blocks relevant action.
+Partial receipt and consolidation preserve per-asset identity/custody.
+21.2 End-to-end acceptance tests
+Create battery, save and refresh; record persists.
+Unknown chemistry permits draft but blocks incompatible routing.
+Critical damage flag suppresses ordinary listing/routes and creates owned exception.
+Eligible receivers appear; incompatible candidate is excluded with reason.
+Direct and one-hub alternatives show assumptions and comparable costs.
+Both parties must confirm same terms version.
+Below-cap quote can be accepted; above-cap quote cannot book without approval.
+No transporter accepted produces a logistics exception and alternatives.
+Second reservation cannot overbook capacity.
+Pickup updates custody only after recorded handover.
+Synthetic telemetry is labelled and does not diagnose damage.
+Condition discrepancy at receipt prevents automatic closure.
+Receipt without disposition remains pending.
+Disposition evidence enables closure only when all configured gates pass.
+Definition of done: demonstrate the full happy path plus incomplete data, safety hold, quote over budget/no acceptance and receipt discrepancy—without manually editing the database. Every failure shows what happened, why, who owns the next action and how it may resume.
+22. Implementation sequence and team split
+Order | Build | Output
+1 | Enums, schemas, SQLAlchemy models, audit helpers. | Freeze statuses, field names and units.
+2 | Seed organisations/facilities/transporters/assets. | Deterministic synthetic demo network.
+3 | Battery intake/evidence metadata. | Drafts, unknowns, flags, provenance.
+4 | Participant registry/eligibility. | Capability and verification gates.
+5 | Listings/offers/transaction versioning. | Commercial path.
+6 | Matching and route engine. | Hard constraints, rejected reasons, ranking.
+7 | Transport quotes and budget caps. | Overrun/no acceptance.
+8 | Capacity reservation and shipment creation. | No duplicate booking.
+9 | State machine and custody events. | Pickup/transit/receipt/dispute.
+10 | Exception cases and simulated telemetry. | Hold, alerts, review.
+11 | Settlement/disposition records. | Receipt != final outcome.
+12 | React screens/map. | Dashboard, registry, offers, routes, shipment timeline.
+13 | Tests, reset script, README, rehearsal. | Freeze scope early.
+
+Workstream | Owner | Contract
+Backend/data | Member A | Models, validation, API, audit, seed data; publish schemas/sample JSON early.
+Frontend/map | Member B | Forms, dashboard, map, offer UI and timeline; consume shared API.
+Matching/workflow/testing | Member C | Constraints, ranking, budget, state machine and tests.
+Integration owner | One named lead | Run end-to-end, resolve interface conflicts, freeze features and own demo reset.
+
+22.1 Demo story
+Register battery; show one missing field blocking routing.
+Complete intake; eligible refurbisher/recycler appear, incompatible facility is excluded with reason.
+Compare offers using net proceeds and conditions; both parties confirm terms.
+Show direct and hub routes with assumptions.
+First transporter quote exceeds cap; booking is blocked; approve new cap or choose another quote.
+Reserve capacity, book shipment, record pickup and custody.
+Trigger labelled simulated delay/deviation alert.
+Receiver reports condition discrepancy; shipment does not close automatically.
+Resolve exception, record disposition evidence and check closure gates.
+23. Questions to resolve before any real pilot
+Which chemistries/pack sizes are in scope and which are excluded?
+Who is the named qualified reviewer/partner for potentially unsafe batteries?
+What current CPCB/SPCB registration evidence and expiry rules apply to each role/pathway?
+What transporter qualifications, insurance, vehicle/handling rules and incident procedures apply?
+What document proves ownership/authority for each originator type?
+Who pays failed pickup, waiting, hub storage, inspection, return and cancellation costs?
+What downstream evidence proves refurbishment/recycling completion and who can attest it?
+What privacy, retention, dispute, electronic-signature and contractual rules apply?
+How will real route distance, rates, ETAs and facility capacity be refreshed?
+Who is accountable if an exception is raised but no participant responds?
+Appendix A. Starter reason-code catalogue
+Code | Meaning
+FIELD_REQUIRED | Required field missing.
+VALUE_UNKNOWN | Critical value unknown for this decision.
+TRANSFER_AUTHORITY_UNCONFIRMED | Authority to transfer not established.
+IDENTITY_CONFLICT | Possible duplicate/conflicting identity.
+SAFETY_FLAG_PRESENT | Reported warning sign; ordinary flow held.
+SAFETY_REVIEW_REQUIRED | Qualified review required.
+SAFETY_SCOPE_MISMATCH | Participant does not match handling scope.
+CHEMISTRY_NOT_ACCEPTED | Facility does not accept chemistry.
+FORM_FACTOR_NOT_ACCEPTED | Facility does not accept form.
+PATHWAY_NOT_SUPPORTED | Facility does not support pathway.
+CAPACITY_INSUFFICIENT | Capacity unavailable/insufficient.
+REGISTRATION_INVALID_OR_EXPIRED | Required registration invalid/expired.
+FACILITY_CLOSED | Receiving window unavailable.
+TRANSPORTER_SCOPE_MISMATCH | Transporter scope/area/capability mismatch.
+QUOTE_EXPIRED | Quote expired.
+QUOTE_INCOMPLETE | Quote component missing.
+QUOTE_OVER_BUDGET | Quote exceeds approved cap.
+COST_ALLOCATION_UNDEFINED | Payer/cost allocation not agreed.
+CAPACITY_CONFLICT | Capacity changed before reservation.
+STATE_TRANSITION_INVALID | Transition not permitted.
+DUPLICATE_ACTION | Duplicate/idempotent action detected.
+CONDITION_MISMATCH | Physical condition differs from snapshot.
+CUSTODY_EVIDENCE_MISSING | Handover evidence missing.
+DISPOSITION_EVIDENCE_MISSING | Final outcome evidence missing.
+
+Appendix B. Regulatory source notes
+CPCB EPR Portal for Battery Waste Management: https://eprbattery.cpcb.gov.in/ (portal lists the Rules and later amendments/guidance, and describes registration of producers, recyclers and refurbishers).
+CPCB-hosted Battery Waste Management Rules, 2022 PDF: https://eprbattery.cpcb.gov.in/upload/adminDoc/Battery-WasteManagementRules-2022.pdf
+Ministry of Environment, Forest and Climate Change / Press Information Bureau, ‘Government notifies Battery Waste Management Rules, 2022’ (25 August 2022): https://www.pib.gov.in/PressReleasePage.aspx?PRID=1854433&lang=2&reg=3
+Product inference: because a generic platform cannot infer that every recycler, transporter or hub suits every battery condition, ChakraSetu uses verified capability scopes, hard-constraint filtering and a qualified-review exception path. This exact software workflow is a conservative design decision, not a claim that the sources prescribe it.
+Appendix C. Operating rule summary
+If… | ChakraSetu must…
+Information is missing | Name fields and block only the affected stage.
+Authority unclear | Block sale; review evidence.
+Potential safety issue appears | Hold ordinary flow; create owned exception; require qualified instructions.
+No eligible receiver | Explain exclusions; constrained manual outreach; no silent relaxation.
+Transport quote exceeds cap | Block booking; show delta; require explicit approved amendment.
+No transporter accepts | Keep transaction separate from logistics; reschedule, requote, renegotiate or cancel under terms.
+Capacity changes | Fail reservation and replan; do not overbook.
+Condition differs at pickup/receipt | Record discrepancy and pause affected transitions.
+Telemetry alert | Record source and threshold; alert is not diagnosis.
+Battery received | Record custody/receipt; do not claim processing complete.
+Settlement reported | Record evidence/status; do not claim money moved without confirmation.
+Disposition absent | Keep pending and create follow-up.

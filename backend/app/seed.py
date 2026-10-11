@@ -361,6 +361,13 @@ def seed(db):
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--reset", action="store_true")
+    args.add_argument(
+        "--presentation",
+        "--demo-data",
+        dest="presentation",
+        action="store_true",
+        help="Seed full presentation data across all circularity stages",
+    )
     opts = args.parse_args()
     if opts.reset:
         Base.metadata.drop_all(engine)
@@ -369,7 +376,15 @@ def main():
     migrate(engine)
     with SessionLocal() as db:
         seed(db)
+<<<<<<< HEAD
     print("Synthetic demo database initialised (schema v4).")
+=======
+        if opts.presentation:
+            from .seed_presentation import seed_presentation_data
+
+            seed_presentation_data(db)
+    print("Synthetic demo database initialised (schema v1).")
+>>>>>>> b275612 (iteration 5)
 
 
 if __name__ == "__main__":
