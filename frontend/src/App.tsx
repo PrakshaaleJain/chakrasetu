@@ -1,4 +1,10 @@
+import { navigationFor } from "./navigation";
+import { OrganisationPage } from "./Organisation";
 import { useState, useEffect } from "react";
+<<<<<<< HEAD
+import { ArrowUpRight, Leaf, RefreshCw } from "lucide-react";
+import { api, useResource, ApiError } from "./api";
+=======
 import {
   LayoutDashboard,
   BatteryCharging,
@@ -13,9 +19,11 @@ import {
   Leaf,
   RefreshCw,
   Workflow,
+  Sparkles,
 } from "lucide-react";
 import { BatteryLifecycleFlowchart } from "./BatteryLifecycleFlowchart";
 import { api, setToken, useResource, ApiError } from "./api";
+>>>>>>> b275612 (iteration 5)
 import type {
   Actor,
   Battery,
@@ -25,7 +33,9 @@ import type {
   Shipment,
   ExceptionCase,
 } from "./types";
-import { Panel, Badge, Empty, human, date, RouteMap } from "./components";
+import { Panel, Badge, Empty, human, date } from "./components";
+import { Circularity } from "./Circularity";
+import { Login } from "./Account";
 import { Registry } from "./Registry";
 import { Network as NetworkPage } from "./Network";
 import { Marketplace } from "./Marketplace";
@@ -34,23 +44,12 @@ import { Routes } from "./Routes";
 import { Shipments } from "./Shipments";
 import { Exceptions } from "./Exceptions";
 import { Receiving } from "./Receiving";
-const NAV = [
-  ["Dashboard", LayoutDashboard],
-  ["Lifecycle flowchart", Workflow],
-  ["Battery registry", BatteryCharging],
-  ["Participant network", NetworkIcon],
-  ["Listings & offers", Store],
-  ["Transactions", Handshake],
-  ["Routes & quotes", RouteIcon],
-  ["Shipments & custody", Truck],
-  ["Exception queue", ShieldAlert],
-  ["Receiving & completion", ClipboardCheck],
-] as const;
 const TITLES: Record<string, string> = {
   Dashboard: "Circularity, coordinated.",
-  "Lifecycle flowchart": "End-to-end battery lifecycle & architecture.",
-  "Battery registry": "Every battery has a next chapter.",
-  "Participant network": "A network built on clear capabilities.",
+  "Account & access": "My Organisation",
+  "Circular supply chain": "Processing & Downstream",
+  "Battery registry": "Battery Registry",
+  "Participant network": "Participant Network",
   "Listings & offers": "Find the right downstream pathway.",
   Transactions: "One agreement. The same terms.",
   "Routes & quotes": "Feasible routes. Explicit costs.",
@@ -65,44 +64,51 @@ const EMPTY_NETWORK: Network = {
   transporters: [],
 };
 export default function App() {
-  const [actors, setActors] = useState<Actor[]>([]);
   const [actor, setActor] = useState<Actor | null>(null);
-  const [page, setPage] = useState("Dashboard");
+  const [page, setPage] = useState(() => {
+    try {
+      return decodeURIComponent(location.hash.slice(1)) || "Dashboard";
+    } catch {
+      return "Dashboard";
+    }
+  });
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [fields, setFields] = useState<Record<string, string>>({});
   useEffect(() => {
-    api<Actor[]>("/demo/users")
-      .then((rows) => {
-        setActors(rows);
-        const chosen =
-          rows.find((r) => r.token === localStorage.getItem("chakra-token")) ||
-          rows[0];
-        if (chosen) {
-          setToken(chosen.token);
-          setActor(chosen);
-          setVersion((v) => v + 1);
-        } else {
-          setError(
-            "Demo login is disabled. Configure an authenticated user token before opening the UI.",
-          );
-        }
+    const signedOut = () => setActor(null);
+    window.addEventListener("chakra-unauthenticated", signedOut);
+    api<Actor>("/auth/profile")
+      .then((a) => {
+        setActor(a);
+        setVersion((v) => v + 1);
       })
-      .catch((e) => {
-        const fallbackActor: Actor = {
-          id: "preview-actor",
-          name: "Chakrasetu Hub Operator",
-          role: "HUB",
-          organisation_id: "preview-org",
-          token: "preview",
-          synthetic: true,
-        };
-        setActors([fallbackActor]);
-        setActor(fallbackActor);
-      });
+      .catch(() => setActor(null));
+    return () =>
+      window.removeEventListener("chakra-unauthenticated", signedOut);
   }, []);
+  useEffect(() => {
+    const changed = () => {
+      try {
+        setPage(decodeURIComponent(location.hash.slice(1)) || "Dashboard");
+      } catch {
+        setPage("Dashboard");
+      }
+    };
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
+  }, []);
+  useEffect(() => {
+    if (actor) history.replaceState(null, "", "#" + encodeURIComponent(page));
+  }, [actor, page]);
+  useEffect(() => {
+    if (actor)
+      api<Actor>("/auth/profile")
+        .then(setActor)
+        .catch(() => setActor(null));
+  }, [version]);
   const ready = !!actor;
   const {
     data: batteries,
@@ -151,15 +157,13 @@ export default function App() {
       setNotice(
         result?.pending_confirmation
           ? "Confirmation recorded. The other physical handover party must also confirm."
-          : "Saved to the backend.",
+          : "Your changes have been saved.",
       );
       return result;
     } catch (e) {
       if (e instanceof ApiError) {
         setError(
-          e.reason.code +
-            " · " +
-            e.message +
+          e.message +
             (e.reason.next_action ? " Next: " + e.reason.next_action : ""),
         );
         setFields({
@@ -173,227 +177,266 @@ export default function App() {
       setBusy(false);
     }
   }
+  const permittedPages = navigationFor(
+    actor || ({ role: "", organisation_id: "" } as Actor),
+  );
+  useEffect(() => {
+    if (actor && !permittedPages.some((n) => n.page === page))
+      setPage("Dashboard");
+  }, [actor, page]);
   const open = cases.filter((c) => c.status !== "CLOSED");
   const holds = batteries.filter((b) =>
     ["HOLD", "REVIEW_REQUIRED"].includes(b.state),
   );
-  const main = actor ? (
-    page === "Battery registry" ? (
-      <Registry
-        batteries={batteries}
-        network={network}
-        actor={actor}
-        action={action}
-        version={version}
-        fields={fields}
-      />
-    ) : page === "Listings & offers" ? (
-      <Marketplace
-        actor={actor}
-        batteries={batteries}
-        listings={listings}
-        version={version}
-        action={action}
-      />
-    ) : page === "Transactions" ? (
-      <Transactions transactions={transactions} actor={actor} action={action} />
-    ) : page === "Routes & quotes" ? (
-      <Routes
-        transactions={transactions}
-        actor={actor}
-        action={action}
-        version={version}
-        network={network}
-      />
-    ) : page === "Shipments & custody" ? (
-      <Shipments
-        shipments={shipments}
-        actor={actor}
-        action={action}
-        version={version}
-        network={network}
-      />
-    ) : page === "Exception queue" ? (
-      <Exceptions
-        cases={cases}
-        actor={actor}
-        action={action}
-        network={network}
-      />
-    ) : page === "Receiving & completion" ? (
-      <Receiving
-        actor={actor}
-        shipments={shipments}
-        transactions={transactions}
-        action={action}
-        version={version}
-      />
-    ) : page === "Participant network" ? (
-      <NetworkPage network={network} actor={actor} action={action} />
-    ) : page === "Lifecycle flowchart" ? (
-      <BatteryLifecycleFlowchart
-        brandColor="#087d64"
-        accentColor="#d59a35"
-        backgroundColor="transparent"
-      />
-    ) : (
-      <>
-        <div className="hero">
-          <div>
-            <span className="eyebrow">BATTERY CIRCULARITY OPERATIONS</span>
-            <h2>
-              Keep materials moving.
-              <br />
-              <em>Keep the evidence with them.</em>
-            </h2>
-            <p>
-              Coordinate the journey from intake to an evidenced downstream
-              outcome, with clear terms and accountable handovers.
-            </p>
-            <button
-              className="primary"
-              onClick={() => setPage("Battery registry")}
-            >
-              Open battery registry <ArrowUpRight size={16} />
-            </button>
-          </div>
-          <div className="cycle-mark">
-            <Leaf size={52} />
-            <span>
-              REPAIR
-              <br />
-              REUSE
-              <br />
-              RECOVER
-            </span>
-            <small>ChakraSetu</small>
-          </div>
-        </div>
-        <div className="metrics">
-          {[
-            [batteries.length, "Visible battery assets", "Registry and intake"],
-            [
-              shipments.filter(
-                (s) => !["CLOSED", "CANCELLED"].includes(s.state),
-              ).length,
-              "Active shipments",
-              "Physical workflow",
-            ],
-            [open.length, "Open exceptions", "Owned next actions"],
-            [holds.length, "On hold / review", "Ordinary flow blocked"],
-          ].map(([n, label, sub]) => (
-            <div className="metric" key={label}>
-              <small>{label}</small>
-              <strong>{n}</strong>
-              <span>{sub}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ marginTop: 24, marginBottom: 28 }}>
-          <BatteryLifecycleFlowchart
-            brandColor="#087d64"
-            accentColor="#d59a35"
-            backgroundColor="transparent"
-          />
-        </div>
-        <div className="two-cols">
-          <Panel
-            title="Attention required"
-            aside={
+  const main =
+    actor && permittedPages.some((n) => n.page === page) ? (
+      page === "Circular supply chain" ? (
+        <Circularity
+          actor={actor!}
+          action={action}
+          version={version}
+          batteries={batteries}
+          network={network}
+        />
+      ) : page === "Account & access" ? (
+        <OrganisationPage
+          actor={actor!}
+          version={version}
+          action={action}
+          onSignedOut={() => setActor(null)}
+        />
+      ) : page === "Battery registry" ? (
+        <Registry
+          batteries={batteries}
+          network={network}
+          actor={actor}
+          action={action}
+          version={version}
+          fields={fields}
+        />
+      ) : page === "Listings & offers" ? (
+        <Marketplace
+          actor={actor}
+          batteries={batteries}
+          listings={listings}
+          version={version}
+          action={action}
+        />
+      ) : page === "Transactions" ? (
+        <Transactions
+          transactions={transactions}
+          actor={actor}
+          action={action}
+        />
+      ) : page === "Routes & quotes" ? (
+        <Routes
+          transactions={transactions}
+          actor={actor}
+          action={action}
+          version={version}
+          network={network}
+        />
+      ) : page === "Shipments & custody" ? (
+        <Shipments
+          shipments={shipments}
+          actor={actor}
+          action={action}
+          version={version}
+          network={network}
+        />
+      ) : page === "Exception queue" ? (
+        <Exceptions
+          cases={cases}
+          actor={actor}
+          action={action}
+          network={network}
+        />
+      ) : page === "Receiving & completion" ? (
+        <Receiving
+          actor={actor}
+          shipments={shipments}
+          transactions={transactions}
+          action={action}
+          version={version}
+        />
+      ) : page === "Participant network" ? (
+        <NetworkPage version={version} />
+      ) : (
+        <>
+          <div className="hero">
+            <div>
+              <span className="eyebrow">BATTERY CIRCULARITY OPERATIONS</span>
+              <h2>
+                Keep materials moving.
+                <br />
+                <em>Keep the evidence with them.</em>
+              </h2>
+              <p>
+                Coordinate the journey from intake to an evidenced downstream
+                outcome, with clear terms and accountable handovers.
+              </p>
               <button
-                className="text-button"
-                onClick={() => setPage("Exception queue")}
+                className="primary"
+                onClick={() =>
+                  setPage(
+                    permittedPages.some((n) => n.page === "Battery registry")
+                      ? "Battery registry"
+                      : "Shipments & custody",
+                  )
+                }
               >
-                View queue ↗
+                {permittedPages.some((n) => n.page === "Battery registry")
+                  ? "Open Battery Registry"
+                  : "View Shipments"}{" "}
+                <ArrowUpRight size={16} />
               </button>
-            }
-          >
-            {open.length ? (
-              open.slice(0, 4).map((c) => (
-                <div className="attention" key={c.id}>
-                  <span className="alert-circle">!</span>
-                  <div>
-                    <strong>{human(c.category)}</strong>
-                    <p>{c.next_action}</p>
-                    <small>Due {date(c.due_at)}</small>
+            </div>
+            <div className="cycle-mark">
+              <Leaf size={52} />
+              <span>
+                REPAIR
+                <br />
+                REUSE
+                <br />
+                RECOVER
+              </span>
+              <small>ChakraSetu</small>
+            </div>
+          </div>
+          <div className="metrics">
+            {[
+              [
+                batteries.length,
+                "Visible battery assets",
+                "Registry and intake",
+              ],
+              [
+                shipments.filter(
+                  (s) => !["CLOSED", "CANCELLED"].includes(s.state),
+                ).length,
+                "Active shipments",
+                "Physical workflow",
+              ],
+              [open.length, "Open exceptions", "Owned next actions"],
+              [holds.length, "On hold / review", "Ordinary flow blocked"],
+            ].map(([n, label, sub]) => (
+              <div className="metric" key={label}>
+                <small>{label}</small>
+                <strong>{n}</strong>
+                <span>{sub}</span>
+              </div>
+            ))}
+          </div>
+          <div className="two-cols">
+            <Panel
+              title="Attention required"
+              aside={
+                <button
+                  className="text-button"
+                  onClick={() => setPage("Exception queue")}
+                >
+                  View queue ↗
+                </button>
+              }
+            >
+              {open.length ? (
+                open.slice(0, 4).map((c) => (
+                  <div className="attention" key={c.id}>
+                    <span className="alert-circle">!</span>
+                    <div>
+                      <strong>{human(c.category)}</strong>
+                      <p>{c.next_action}</p>
+                      <small>Due {date(c.due_at)}</small>
+                    </div>
+                    <Badge value={c.severity} />
                   </div>
-                  <Badge value={c.severity} />
-                </div>
-              ))
+                ))
+              ) : (
+                <Empty>Your organisation has no open exceptions.</Empty>
+              )}
+            </Panel>
+            <Panel title="Workflow readiness">
+              <div className="workflow-summary">
+                {[
+                  ["1", "Register & screen", "Battery registry"],
+                  ["2", "Discover & agree", "Listings & offers"],
+                  ["3", "Plan & book", "Routes & quotes"],
+                  ["4", "Handover & receive", "Shipments & custody"],
+                  ["5", "Inspect & complete", "Receiving & completion"],
+                ]
+                  .filter(([, , tab]) =>
+                    permittedPages.some((p) => p.page === tab),
+                  )
+                  .map(([n, title, tab]) => (
+                    <button key={n} onClick={() => setPage(tab)}>
+                      <span>{n}</span>
+                      <strong>{title}</strong>
+                      <ArrowUpRight size={16} />
+                    </button>
+                  ))}
+              </div>
+              <p className="muted">
+                Follow each step to agree terms, arrange transport and record
+                receipt. Required checks protect every handover.
+              </p>
+            </Panel>
+          </div>
+          <Panel title="Current shipments">
+            {shipments.length ? (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Asset</th>
+                      <th>Workflow</th>
+                      <th>Physical holder</th>
+                      <th>Route</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shipments.map((s) => (
+                      <tr key={s.id}>
+                        <td>
+                          <strong>{s.asset.internal_id}</strong>
+                        </td>
+                        <td>
+                          <Badge value={s.state} />
+                        </td>
+                        <td>
+                          {network.organisations.find(
+                            (o) => o.id === s.asset.current_holder_org_id,
+                          )?.name || s.asset.current_holder_org_id}
+                        </td>
+                        <td>{s.route.hub_id ? "One hub" : "Direct"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <Empty>No open exceptions for this actor.</Empty>
+              <Empty>
+                Complete an offer, route and accepted quote to book the first
+                shipment.
+              </Empty>
             )}
           </Panel>
-          <Panel title="Workflow readiness">
-            <div className="workflow-summary">
-              {[
-                ["1", "Register & screen", "Battery registry"],
-                ["2", "Discover & agree", "Listings & offers"],
-                ["3", "Plan & book", "Routes & quotes"],
-                ["4", "Handover & receive", "Shipments & custody"],
-                ["5", "Inspect & complete", "Receiving & completion"],
-              ].map(([n, title, tab]) => (
-                <button key={n} onClick={() => setPage(tab)}>
-                  <span>{n}</span>
-                  <strong>{title}</strong>
-                  <ArrowUpRight size={16} />
-                </button>
-              ))}
-            </div>
-            <p className="muted">
-              Every stage persists through the API. Safety, authority, cost and
-              capacity constraints remain gates.
-            </p>
-          </Panel>
-        </div>
-        <Panel title="Current shipments">
-          {shipments.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Asset</th>
-                    <th>Workflow</th>
-                    <th>Physical holder</th>
-                    <th>Route</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shipments.map((s) => (
-                    <tr key={s.id}>
-                      <td>
-                        <strong>{s.asset.internal_id}</strong>
-                      </td>
-                      <td>
-                        <Badge value={s.state} />
-                      </td>
-                      <td>
-                        {network.organisations.find(
-                          (o) => o.id === s.asset.current_holder_org_id,
-                        )?.name || s.asset.current_holder_org_id}
-                      </td>
-                      <td>{s.route.hub_id ? "One hub" : "Direct"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty>
-              The network is seeded and ready. Complete an offer, route and
-              accepted quote to book the first shipment.
-            </Empty>
-          )}
-        </Panel>
-      </>
-    )
-  ) : (
-    <Empty>Connecting to the backend…</Empty>
-  );
+        </>
+      )
+    ) : (
+      <Empty>Loading your workspace…</Empty>
+    );
+  if (!actor)
+    return (
+      <Login
+        onLogin={async () => {
+          setActor(await api<Actor>("/auth/profile"));
+          setVersion((v) => v + 1);
+        }}
+      />
+    );
   return (
     <div className="app-shell">
-      <a className="skip-link" href="#main-content">Skip to main content</a>
-      <aside className="sidebar" aria-label="ChakraSetu workspace navigation">
+      <aside className="sidebar">
         <div className="brand">
           <span className="brand-symbol">↻</span>
           <div>
@@ -401,38 +444,41 @@ export default function App() {
           </div>
         </div>
         <div className="workspace-label">OPERATIONS WORKSPACE</div>
-        <nav aria-label="Primary navigation">
-          {NAV.map(([label, Icon]) => (
-            <button
-              className={page === label ? "active" : ""}
-              key={label}
-              aria-label={label}
-              aria-current={page === label ? "page" : undefined}
-              title={label}
-              onClick={() => {
-                setPage(label);
-                setNotice("");
-                setFields({});
-              }}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-              {label === "Exception queue" && open.length > 0 && (
-                <b>{open.length}</b>
-              )}
-            </button>
-          ))}
+        <nav>
+          {navigationFor(actor).map(
+            (
+              { page: label, label: displayLabel, icon: Icon, group },
+              index,
+              nav,
+            ) => (
+              <div key={label}>
+                {(index === 0 || nav[index - 1].group !== group) && (
+                  <span className="nav-group">{group}</span>
+                )}
+                <button
+                  className={page === label ? "active" : ""}
+                  key={label}
+                  onClick={() => {
+                    setPage(label);
+                    setNotice("");
+                    setFields({});
+                  }}
+                >
+                  <Icon size={18} />
+                  <span>{displayLabel}</span>
+                  {label === "Exception queue" && open.length > 0 && (
+                    <b>{open.length}</b>
+                  )}
+                </button>
+              </div>
+            ),
+          )}
         </nav>
         <div className="sidebar-bottom">
           <div className="system-live">
-            <span /> Local persistent backend
+            <span /> Connected
           </div>
-          <p>
-            Hackathon MVP
-            <br />
-            Rule version chakra-1.0
-          </p>
-          <span className="demo-badge">SYNTHETIC DEMONSTRATION</span>
+          <p>Battery circularity platform</p>
         </div>
       </aside>
       <div className="main-shell">
@@ -440,31 +486,52 @@ export default function App() {
           <div>
             <span>Workspace</span>
             <b>/</b>
-            <strong>{page}</strong>
+            <strong>
+              {navigationFor(actor).find((n) => n.page === page)?.label}
+            </strong>
             {syncing && <small>Syncing…</small>}
           </div>
           <div className="actor-switch">
-            <label htmlFor="actor">Demo actor</label>
-            <select
-              id="actor"
-              value={actor?.id || ""}
-              onChange={(e) => {
-                const a = actors.find((x) => x.id === e.target.value)!;
-                setToken(a.token);
-                setActor(a);
-                setVersion((v) => v + 1);
-                setError("");
-                setNotice("");
+            <span>
+              {actor.memberships?.find(
+                (m) => m.organisation_id === actor.organisation_id,
+              )?.organisation_name || actor.name}
+            </span>
+            <button
+              onClick={async () => {
+                await api("/auth/logout", {}, "POST");
+                setActor(null);
               }}
             >
-              {actors.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+              Sign out
+            </button>
+            <button
+<<<<<<< HEAD
+              title="Refresh records"
+=======
+              title="Populate full presentation demonstration data across all stages"
+              aria-label="Load demo data"
+              className="demo-seed-btn"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await api("/demo/seed-presentation", {}, "POST");
+                  setVersion((v) => v + 1);
+                  setNotice("Presentation demonstration data populated across all lifecycle stages.");
+                } catch {
+                  setError("Failed to populate presentation data.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Sparkles size={14} />
+              <span>Load presentation data</span>
+            </button>
             <button
               title="Refresh backend records"
+>>>>>>> b275612 (iteration 5)
               aria-label="Refresh"
               onClick={() => setVersion((v) => v + 1)}
             >
@@ -472,15 +539,12 @@ export default function App() {
             </button>
           </div>
         </header>
-        <main id="main-content" tabIndex={-1}>
+        <main>
           <div className="page-heading">
             <div>
-              <span className="eyebrow">
-                CHAKRASETU / {actor ? human(actor.role) : "CONNECTING"}
-              </span>
+              <span className="eyebrow">CHAKRASETU / WORKSPACE</span>
               <h1>{TITLES[page]}</h1>
             </div>
-            <span className="demo-badge light">ALL DEMO DATA IS SYNTHETIC</span>
           </div>
           {(error || bError || nError) && (
             <div role="alert" className="error-banner">
@@ -503,16 +567,12 @@ export default function App() {
           <div className={busy ? "content busy" : "content"} aria-busy={busy}>
             {main}
           </div>
-          <footer>
-            ChakraSetu coordinates evidence and decisions. No safety
-            certification, money movement or real-world registration
-            verification.
-          </footer>
+          <footer>ChakraSetu · Coordinating battery circularity.</footer>
         </main>
       </div>
       {busy && (
         <div className="saving" role="status">
-          Saving to backend…
+          Saving your changes…
         </div>
       )}
     </div>

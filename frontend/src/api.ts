@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Reason } from "./types";
-let token = localStorage.getItem("chakra-token") || "";
-export function setToken(value: string) {
-  token = value;
-  localStorage.setItem("chakra-token", value);
+function csrf() {
+  return (
+    document.cookie
+      .split("; ")
+      .find((x) => x.startsWith("chakra_csrf="))
+      ?.split("=")[1] || ""
+  );
 }
+localStorage.removeItem("chakra-token");
 export class ApiError extends Error {
   constructor(
     public reason: Reason,
@@ -21,27 +25,31 @@ export async function api<T>(
   const form = body instanceof FormData;
   const response = await fetch("/api" + path, {
     method,
+    credentials: "include",
     headers: {
-      Authorization: "Bearer " + token,
+      "X-CSRF-Token": csrf(),
       ...(form ? {} : { "Content-Type": "application/json" }),
       ...(method === "GET" ? {} : { "Idempotency-Key": crypto.randomUUID() }),
     },
     ...(body !== undefined ? { body: form ? body : JSON.stringify(body) } : {}),
   });
-  const data = await response
-    .json()
-    .catch(() => ({
-      detail: {
-        code: "NETWORK_RESPONSE_ERROR",
-        message: "Server returned an unreadable response.",
-      },
-    }));
+  const data = await response.json().catch(() => ({
+    detail: {
+      code: "NETWORK_RESPONSE_ERROR",
+      message: "Server returned an unreadable response.",
+    },
+  }));
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      !["/auth/login", "/auth/register", "/auth/reset"].includes(path)
+    )
+      window.dispatchEvent(new Event("chakra-unauthenticated"));
     if (Array.isArray(data.detail)) {
       const fields: Record<string, string> = {};
       for (const e of data.detail) fields[e.loc?.[1] || "form"] = e.msg;
       throw new ApiError(
-        { code: "VALIDATION_ERROR", message: "Correct the marked fields." },
+        { code: "VALIDATION_ERROR", message: "Please check the submitted information. " + Object.entries(fields).map(([field,message])=>field.replaceAll("_"," ")+": "+message).join(" ") },
         fields,
       );
     }

@@ -1,3 +1,4 @@
+import { hasRole } from "./navigation";
 import { useState } from "react";
 import type { Actor, Action, Shipment, Transaction, Settlement } from "./types";
 import { useResource } from "./api";
@@ -25,7 +26,7 @@ export function Receiving({
   const s = shipments.find((x) => x.id === selected) || shipments[0];
   const tx = transactions.find((t) => t.id === s?.transaction_id);
   const { data: settlement } = useResource<Settlement | null>(
-    tx && actor.role !== "TRANSPORTER" && actor.role !== "HUB"
+    tx && !hasRole(actor, "TRANSPORTER") && !hasRole(actor, "HUB")
       ? "/transactions/" + tx.id + "/settlement"
       : null,
     version,
@@ -111,7 +112,9 @@ export function Receiving({
                     "REJECT_PATHWAY",
                     "POSSIBLE_HAZARD",
                   ].map((x) => (
-                    <option key={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {human(x)}
+                    </option>
                   ))}
                 </select>
               </Field>
@@ -192,11 +195,13 @@ export function Receiving({
                         "DISPUTED",
                         "OVERDUE",
                       ].map((x) => (
-                        <option key={x}>{x}</option>
+                        <option key={x} value={x}>
+                          {human(x)}
+                        </option>
                       ))}
                     </select>
                   </Field>
-                  <Field label="Evidence / reference · synthetic in demo">
+                  <Field label="Supporting reference">
                     <input
                       required
                       value={evidence}
@@ -231,7 +236,9 @@ export function Receiving({
                   onChange={(e) => setDisposition(e.target.value)}
                 >
                   {dispositions.map((x) => (
-                    <option key={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {human(x)}
+                    </option>
                   ))}
                 </select>
               </Field>

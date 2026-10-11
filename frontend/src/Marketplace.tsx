@@ -1,3 +1,4 @@
+import { hasRole } from "./navigation";
 import { useState } from "react";
 import type {
   Action,
@@ -39,7 +40,7 @@ export function Marketplace({
     [],
   );
   const { data: candidates } = useResource<Candidate[]>(
-    selected && (own || actor.role === "REVIEWER")
+    selected && (own || hasRole(actor, "REVIEWER"))
       ? "/listings/" + selected + "/eligible-buyers"
       : null,
     version,
@@ -56,7 +57,7 @@ export function Marketplace({
           offers.
         </p>
       </div>
-      {actor.role === "ORIGINATOR" && (
+      {hasRole(actor, "ORIGINATOR") && (
         <Panel title="Publish a screened asset">
           <form
             className="inline-form"
@@ -129,7 +130,7 @@ export function Marketplace({
           ) : (
             <>
               <p className="muted">{listing.data.terms}</p>
-              {(own || actor.role === "REVIEWER") && (
+              {(own || hasRole(actor, "REVIEWER")) && (
                 <>
                   <h4>Downstream eligibility</h4>
                   {candidates.map((c, i) => (
@@ -143,7 +144,7 @@ export function Marketplace({
                         <ul>
                           {c.reasons.map((r, i) => (
                             <li key={i}>
-                              <code>{r.code}</code> {r.message}
+                              <strong>{human(r.code)}</strong> {r.message}
                             </li>
                           ))}
                         </ul>
@@ -152,11 +153,11 @@ export function Marketplace({
                   ))}
                 </>
               )}
-              {actor.role === "BUYER" &&
+              {hasRole(actor, "BUYER") &&
                 eligible.length > 0 &&
                 listing.status === "OPEN" && (
                   <>
-                    <h4>Submit a synthetic commercial offer</h4>
+                    <h4>Submit Offer</h4>
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
@@ -236,8 +237,8 @@ export function Marketplace({
               <h4>Offer comparison</h4>
               {offers.length === 0 ? (
                 <Empty>
-                  No offers submitted yet. Switch to an eligible buyer demo
-                  actor to submit one.
+                  No offers have been submitted yet. Eligible buyers can submit
+                  an offer after reviewing the listing.
                 </Empty>
               ) : (
                 offers.map((o) => (

@@ -7,7 +7,34 @@ import {
   Tooltip,
 } from "react-leaflet";
 import type { Route, Network } from "./types";
+const statusLabels: Record<string, string> = {
+ LFP:"LFP", NMC:"NMC", NCA:"NCA", LCO:"LCO", LMO:"LMO", LTO:"LTO",
+  CONFIRMED_PENDING_PICKUP: "Awaiting collection",
+  AGREED_PENDING_LOGISTICS: "Terms agreed · transport pending",
+  NO_TRANSPORTER: "Awaiting transporter acceptance",
+  PENDING_REVIEW: "Pending Verification",
+  PENDING: "Pending Verification",
+  INFORMATION_REQUESTED: "Additional Information Requested",
+  REJECTED: "Not Approved",
+  VERIFIED: "Reviewed",
+  UNVERIFIED: "Not Verified",
+  EXAMPLE_SCOPE: "Example scope",
+  REMOVED: "Removed",
+  WITHDRAWN: "Withdrawn",
+  SUSPENDED: "Suspended",
+  ORIGINATOR: "Battery Originator",
+  SECOND_LIFE: "Second-life Operator",
+  ORG_ADMIN: "Organisation Administrator",
+  REVIEWER: "Network Reviewer",
+  PAYMENT_REPORTED: "Payment Reported",
+  PAYMENT_CONFIRMED: "Payment Confirmed",
+  COMPLETED_REPORTED: "Completion Reported",
+  AUTHORITY_REVIEW_REQUIRED: "Transfer Authority Review Required",
+  NEEDS_INFORMATION: "More Information Required",
+  QUALIFIED_REVIEW: "Qualified Review",
+};
 export const human = (s: string) =>
+  statusLabels[s] ||
   s
     .replaceAll("_", " ")
     .toLowerCase()
@@ -127,7 +154,7 @@ export function RouteMap({
             radius={6}
             pathOptions={{ color: "#087d64", fillOpacity: 1 }}
           >
-            <Tooltip>{f.name} · Synthetic facility</Tooltip>
+            <Tooltip>{f.name}</Tooltip>
           </CircleMarker>
         ))}
         {points.map((p, i) => (
@@ -140,8 +167,8 @@ export function RouteMap({
         ))}
       </MapContainer>
       <span className="map-note">
-        Illustrative straight-line connections · OSM tiles require internet ·
-        route details below work offline
+        Estimated route connections. Map tiles need internet; the route details
+        below are available offline.
       </span>
     </div>
   );

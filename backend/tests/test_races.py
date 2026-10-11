@@ -16,6 +16,12 @@ from test_logistics import routes, quoted
 def second_transaction(c):
     body = {
         "internal_id": "race-second",
+        "registration_title": "Existing regression battery",
+        "pbs": "L1",
+        "collection_availability": "YES",
+        "address": "Bengaluru",
+        "lat": 12.97,
+        "lng": 77.59,
         "owner_org_id": "org-fleet",
         "custodian_org_id": "org-fleet",
         "flags": {f: "NO" for f in FLAGS},
@@ -49,6 +55,24 @@ def second_transaction(c):
             "reason": "Mock authority review",
             "evidence": "Synthetic reference",
         },
+    )
+    assert (
+        c.post(
+            "/batteries/" + id + "/registration-review",
+            headers=auth("reviewer"),
+            json={
+                "decision": "APPROVED",
+                "reason": "Synthetic registration information reviewed",
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        c.post(
+            "/batteries/" + id + "/confirm-transfer-authority",
+            headers=auth("originator"),
+        ).status_code
+        == 200
     )
     c.post("/batteries/" + id + "/screen", headers=auth("originator"))
     l = c.post(

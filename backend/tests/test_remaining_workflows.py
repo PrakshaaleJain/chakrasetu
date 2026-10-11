@@ -33,6 +33,17 @@ def test_partial_receipt_has_quantity_custody_segments(client):
         ).status_code
         == 200
     )
+    assert (
+        client.post(
+            "/batteries/battery-1/registration-review",
+            headers=auth("reviewer"),
+            json={
+                "decision": "APPROVED",
+                "reason": "Quantity revision reviewed; custody unchanged",
+            },
+        ).status_code
+        == 200
+    )
     client.post("/batteries/battery-1/screen", headers=auth("originator"))
     tx, s = arrive(client)
     r = client.post(
@@ -194,6 +205,12 @@ def test_reviewed_authority_fulfils_owned_intake_followup(client):
         headers=auth("originator"),
         json={
             "internal_id": "authority-followup",
+            "registration_title": "Existing regression battery",
+            "pbs": "L1",
+            "collection_availability": "YES",
+            "address": "Bengaluru",
+            "lat": 12.97,
+            "lng": 77.59,
             "owner_org_id": "org-fleet",
             "custodian_org_id": "org-fleet",
             "flags": {f: "NO" for f in FLAGS},
@@ -230,6 +247,17 @@ def test_reviewed_authority_fulfils_owned_intake_followup(client):
     )
     assert (
         client.post(
+            "/batteries/" + a["id"] + "/registration-review",
+            headers=auth("reviewer"),
+            json={
+                "decision": "APPROVED",
+                "reason": "Synthetic registration review complete",
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
             "/batteries/" + a["id"] + "/screen", headers=auth("originator")
         ).json()["state"]
         == "READY_FOR_LISTING"
@@ -239,8 +267,7 @@ def test_reviewed_authority_fulfils_owned_intake_followup(client):
         for c in client.get("/exceptions", headers=auth("originator")).json()
         if c["object_id"] == a["id"]
     ]
-    assert (
-        len(cases) == 1
-        and cases[0]["status"] == "CLOSED"
-        and cases[0]["data"]["resolution_evidence_ids"]
-    )
+    # Registration approval is a review history entry, not an automatic transfer-authority exception.
+    assert cases == []
+    asset = client.get("/batteries/" + a["id"], headers=auth("originator")).json()
+    assert asset["data"]["registration"]["history"][-1]["decision"] == "APPROVED"

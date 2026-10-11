@@ -1,3 +1,4 @@
+from .auth import has_role
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from . import models as m
@@ -5,7 +6,7 @@ from .common import get, dump, fail, audit, exception
 from .auth import current_user, party, role
 from .db import get_db
 from .schemas import InspectionIn, AmendmentIn, SettlementIn, DispositionIn
-from .services.shipments import context, closure_check
+from .services.shipments import context
 from .services.commercial import current_terms, amend
 
 router = APIRouter()
@@ -13,7 +14,10 @@ router = APIRouter()
 
 @router.post("/shipments/{id}/inspection")
 def inspection(
-    id: str, body: InspectionIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: InspectionIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     role(user, "BUYER")
     s = get(db, m.Shipment, id)
@@ -96,9 +100,11 @@ def inspection(
 
 
 @router.get("/transactions/{id}/settlement")
-def settlement(id: str, db=Depends(get_db), user=Depends(current_user)):
+def settlement(
+    id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     tx = get(db, m.SaleTransaction, id)
-    if user.role != "REVIEWER":
+    if not has_role(user, "REVIEWER"):
         party(user, tx)
     row = db.scalar(
         select(m.SettlementRecord).where(m.SettlementRecord.transaction_id == id)
@@ -108,7 +114,10 @@ def settlement(id: str, db=Depends(get_db), user=Depends(current_user)):
 
 @router.post("/transactions/{id}/settlement")
 def update_settlement(
-    id: str, body: SettlementIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: SettlementIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     tx = get(db, m.SaleTransaction, id)
     party(user, tx)
@@ -188,7 +197,10 @@ def update_settlement(
 
 @router.post("/batteries/{id}/disposition")
 def disposition(
-    id: str, body: DispositionIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: DispositionIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     role(user, "BUYER")
     asset = get(db, m.BatteryAsset, id)
@@ -249,7 +261,7 @@ def disposition(
             "evidence": body.evidence,
             "self_reported": True,
             "record_only": True,
-            "synthetic": True,
+            "synthetic": bool(asset.data.get("synthetic", False)),
         },
     )
     db.add(row)

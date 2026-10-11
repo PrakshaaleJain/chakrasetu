@@ -12,7 +12,7 @@ export function Transactions({
 }) {
   const [cap, setCap] = useState("4500");
   const [reason, setReason] = useState("Approve disclosed logistics overrun");
-  const [evidence, setEvidence] = useState("Synthetic commercial amendment");
+  const [evidence, setEvidence] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   return (

@@ -51,6 +51,11 @@ def agreed(client):
 def test_intake_persists_and_flags(client):
     body = {
         "internal_id": "new",
+        "registration_title": "Existing regression battery",
+        "pbs": "L3",
+        "address": "Bengaluru",
+        "lat": 12.97,
+        "lng": 77.59,
         "owner_org_id": "org-fleet",
         "custodian_org_id": "org-fleet",
         "flags": {f: "NO" for f in FLAGS},

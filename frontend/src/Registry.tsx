@@ -1,8 +1,11 @@
+import { hasRole } from "./navigation";
 import { useState } from "react";
 import type { Action, Actor, Battery, Network } from "./types";
 import { useResource } from "./api";
+import { RegistrationReviewPanel, EvidenceReview } from "./RegistrationReview";
+import { DocumentsInput } from "./RegistrationFields";
 import { Intake } from "./Intake";
-import { Badge, Panel, Field, Empty, human, date } from "./components";
+import { Badge, Panel, Empty, human, date } from "./components";
 export function Registry({
   batteries,
   network,
@@ -18,12 +21,15 @@ export function Registry({
   version: number;
   fields: Record<string, string>;
 }) {
+  const [confirmation, setConfirmation] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [selected, setSelected] = useState("");
   const [edit, setEdit] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [kind, setKind] = useState("TRANSFER_AUTHORITY");
-  const [reference, setReference] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState("");
   const { data: asset } = useResource<Battery | null>(
     selected ? "/batteries/" + selected : null,
     version,
@@ -38,7 +44,13 @@ export function Registry({
         network={network}
         action={action}
         fields={fields}
-        done={() => {
+        done={(submitted) => {
+          if (submitted !== undefined)
+            setConfirmation(
+              submitted
+                ? "Registration submitted. It awaits network-operator approval; pending registrations cannot enter ordinary matching."
+                : "Draft saved privately. Complete it and submit for review when ready.",
+            );
           setCreating(false);
           setEdit(false);
         }}
@@ -48,12 +60,17 @@ export function Registry({
     network.organisations.find((o) => o.id === id)?.name || id;
   return (
     <>
+      {confirmation && (
+        <p role="status" className="success-banner">
+          {confirmation}
+        </p>
+      )}
       <div className="toolbar">
         <p className="muted">
           Assets visible to your organisation · durable intake and evidence
           history
         </p>
-        {actor.role === "ORIGINATOR" && (
+        {hasRole(actor, "ORIGINATOR") && (
           <button className="primary" onClick={() => setCreating(true)}>
             + Register battery
           </button>
@@ -64,32 +81,60 @@ export function Registry({
           title="Battery registry"
           aside={<span className="count">{batteries.length}</span>}
         >
+          {hasRole(actor, "REVIEWER") && (
+            <label>
+              Registration queue filter
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">All registrations</option>
+                {[
+                  "PENDING_REVIEW",
+                  "INFORMATION_REQUESTED",
+                  "SPECIALIST_ASSESSMENT",
+                  "APPROVED",
+                  "REJECTED",
+                ].map((x) => (
+                  <option key={x}>{x}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {batteries.length === 0 ? (
             <Empty>
-              No assets visible to this actor. Buyers can discover eligible
-              assets in Listings.
+              Your organisation has no visible battery records yet. Buyers can
+              discover eligible assets in Listings.
             </Empty>
           ) : (
             <div className="record-list">
-              {batteries.map((b) => (
-                <button
-                  className={
-                    "record-row " + (selected === b.id ? "selected" : "")
-                  }
-                  key={b.id}
-                  onClick={() => setSelected(b.id)}
-                >
-                  <span className="battery-avatar">↻</span>
-                  <span>
-                    <strong>{b.internal_id}</strong>
-                    <small>
-                      {b.chemistry} · {human(b.form)} ·{" "}
-                      {b.mass_kg == null ? "Mass unknown" : b.mass_kg + " kg"}
-                    </small>
-                  </span>
-                  <Badge value={b.state} />
-                </button>
-              ))}
+              {batteries
+                .filter(
+                  (b) =>
+                    !statusFilter ||
+                    b.data.registration?.status === statusFilter,
+                )
+                .map((b) => (
+                  <button
+                    className={
+                      "record-row " + (selected === b.id ? "selected" : "")
+                    }
+                    key={b.id}
+                    onClick={() => setSelected(b.id)}
+                  >
+                    <span className="battery-avatar">↻</span>
+                    <span>
+                      <strong>
+                        {b.data.registration_title || b.internal_id}
+                      </strong>
+                      <small>
+                        {b.chemistry} · {human(b.form)} ·{" "}
+                        {b.mass_kg == null ? "Mass unknown" : b.mass_kg + " kg"}
+                      </small>
+                    </span>
+                    <Badge value={b.data.registration?.status || b.state} />
+                  </button>
+                ))}
             </div>
           )}
         </Panel>
@@ -98,6 +143,13 @@ export function Registry({
             title={asset.internal_id}
             aside={<Badge value={asset.state} />}
           >
+            <RegistrationReviewPanel
+              key={asset.id}
+              asset={asset}
+              actor={actor}
+              action={action}
+              version={version}
+            />
             <dl className="details">
               <dt>Legal owner</dt>
               <dd>{orgName(asset.owner_org_id)}</dd>
@@ -150,22 +202,22 @@ export function Registry({
             </div>
             {asset.data.screening?.reasons?.map((r: any) => (
               <div className="reason" key={r.code}>
-                <strong>{r.code}</strong>
+                <strong>{human(r.code)}</strong>
                 <p>{r.message}</p>
                 <small>{r.next_action}</small>
               </div>
             ))}
-            {actor.role === "ORIGINATOR" &&
+            {hasRole(actor, "ORIGINATOR") &&
               actor.organisation_id === asset.originator_org_id && (
                 <div className="actions">
                   <button onClick={() => setEdit(true)}>
-                    Edit draft/intake
+                    Revise and resubmit
                   </button>
                   <button
                     className="primary"
                     onClick={() => action("/batteries/" + asset.id + "/screen")}
                   >
-                    Run screening
+                    Check approval and handling gates
                   </button>
                 </div>
               )}
@@ -178,74 +230,100 @@ export function Registry({
                 <span>{e.filename}</span>
                 <small>{e.data.reference || e.checksum.slice(0, 20)}</small>
                 <Badge value={e.review_status} />
-                {actor.role === "REVIEWER" && (
+                <a href={"/api/evidence/" + e.id + "/download"}>
+                  Download {e.filename}
+                </a>
+                {hasRole(actor, "REVIEWER") && (
+                  <EvidenceReview id={e.id} kind={e.kind} action={action} />
+                )}
+                {actor.organisation_id === asset.originator_org_id && (
                   <button
                     onClick={() =>
-                      action("/evidence/" + e.id + "/review", {
-                        status: "VERIFIED",
-                        reason:
-                          "Reviewed submitted demo transfer-authority evidence",
-                        evidence: e.data.reference || e.checksum,
-                      })
+                      action(
+                        `/batteries/${asset.id}/evidence/${e.id}/remove`,
+                        {},
+                      )
                     }
                   >
-                    Record mock evidence review
+                    Remove attachment
                   </button>
                 )}
               </div>
             ))}
-            {actor.role === "ORIGINATOR" && (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const form = new FormData();
-                  form.append("kind", kind);
-                  form.append("reference", reference);
-                  if (file) form.append("file", file);
-                  if (
-                    await action("/batteries/" + asset.id + "/evidence", form)
-                  ) {
-                    setReference("");
-                    setFile(null);
-                  }
-                }}
-              >
-                <div className="form-grid">
-                  <Field label="Evidence type">
-                    <select
-                      value={kind}
-                      onChange={(e) => setKind(e.target.value)}
-                    >
-                      {[
-                        "TRANSFER_AUTHORITY",
-                        "PHOTO",
-                        "SERVICE_REPORT",
-                        "TEST_REPORT",
-                        "INVOICE",
-                        "OTHER",
-                      ].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Reference / synthetic evidence description">
-                    <input
-                      value={reference}
-                      onChange={(e) => setReference(e.target.value)}
-                      required={!file}
+            {hasRole(actor, "ORIGINATOR") &&
+              actor.organisation_id === asset.originator_org_id && (
+                <>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (uploading) return;
+                      setUploadError("");
+                      if (
+                        files.length + (asset.evidence?.length || 0) > 4 ||
+                        files.some((f) => f.size > 10 * 1024 * 1024) ||
+                        files.reduce((s, f) => s + f.size, 0) +
+                          (asset.evidence || []).reduce(
+                            (s, f) => s + (f.data.size_bytes || 0),
+                            0,
+                          ) >
+                          25 * 1024 * 1024
+                      ) {
+                        setUploadError(
+                          "Use at most four files, 10 MB each and 25 MB total.",
+                        );
+                        return;
+                      }
+                      setUploading(true);
+                      try {
+                        for (let i = 0; i < files.length; i++) {
+                          setUploadProgress(
+                            `Uploading ${i + 1} of ${files.length}`,
+                          );
+                          const f = new FormData();
+                          f.append("file", files[i]);
+                          if (
+                            !(await action(
+                              `/batteries/${asset.id}/evidence`,
+                              f,
+                            ))
+                          )
+                            return;
+                        }
+                        setFiles([]);
+                        setUploadProgress("Attachments saved.");
+                      } finally {
+                        setUploading(false);
+                      }
+                    }}
+                  >
+                    <DocumentsInput
+                      files={files}
+                      onChange={setFiles}
+                      error={uploadError}
                     />
-                  </Field>
-                </div>
-                <Field label="Optional attachment · PDF, image or text, max 5 MiB">
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.txt"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  />
-                </Field>
-                <button>Add evidence version</button>
-              </form>
-            )}
+                    <p role="status">{uploadProgress}</p>
+                    <button disabled={uploading || !files.length}>
+                      Save attachments
+                    </button>
+                  </form>
+                  <h4>Transfer authorization · commercial stage</h4>
+                  <p className="muted">
+                    Upload any available authorization evidence using the
+                    generic field. The operator classifies and reviews it before
+                    commercial commitments.
+                  </p>
+                  <button
+                    onClick={() =>
+                      action(
+                        `/batteries/${asset.id}/confirm-transfer-authority`,
+                        {},
+                      )
+                    }
+                  >
+                    Confirm transfer authority against reviewed evidence
+                  </button>
+                </>
+              )}
             {asset.dispositions?.length ? (
               <>
                 <h4>Recorded outcomes</h4>
@@ -254,9 +332,7 @@ export function Registry({
                     <strong>
                       {human(d.data.outcome || String((d as any).outcome))}
                     </strong>
-                    <small>
-                      {d.data.evidence} · self-reported synthetic evidence
-                    </small>
+                    <small>{d.data.evidence} · Owner-reported evidence</small>
                   </div>
                 ))}
               </>

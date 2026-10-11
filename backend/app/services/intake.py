@@ -73,10 +73,14 @@ def screen_result(asset, evidence_kinds):
             )
     return {
         "state": state,
-        "screen": "FLAG_PRESENT"
-        if state == BatteryState.HOLD
-        else (
-            "UNKNOWN" if state == BatteryState.REVIEW_REQUIRED else "NO_FLAG_REPORTED"
+        "screen": (
+            "FLAG_PRESENT"
+            if state == BatteryState.HOLD
+            else (
+                "UNKNOWN"
+                if state == BatteryState.REVIEW_REQUIRED
+                else "NO_FLAG_REPORTED"
+            )
         ),
         "reasons": reasons,
         "rule_version": RULE_VERSION,
@@ -85,6 +89,31 @@ def screen_result(asset, evidence_kinds):
 
 
 def screen(db, asset, user):
+    from .registration import routing_reasons
+
+    registration = asset.data.get("registration")
+    if registration:
+        reasons = routing_reasons(asset)
+        result = {
+            "state": (
+                "READY_FOR_LISTING"
+                if not reasons
+                else (
+                    "HOLD"
+                    if asset.data.get("pbs") in ["L4", "L5"]
+                    else "REVIEW_REQUIRED"
+                )
+            ),
+            "screen": "OWNER_REPORTED",
+            "reasons": reasons,
+            "message": "Registration approval and PBS handling gates only; transfer authority remains separately required.",
+            "rule_version": RULE_VERSION,
+        }
+        asset.state = result["state"]
+        asset.data = {**asset.data, "screening": result}
+        audit(db, user, "battery", asset, "SCREEN", result=result)
+        return result
+
     evidence = db.scalars(
         select(m.EvidenceDocument).where(m.EvidenceDocument.asset_id == asset.id)
     ).all()

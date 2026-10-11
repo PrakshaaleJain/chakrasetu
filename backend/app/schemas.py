@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from .enums import (
@@ -13,14 +13,50 @@ from .enums import (
 )
 
 
-class Schema(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+from .base_schemas import Schema
+from .registration_schemas import ReportedInspection
 
 
 class BatteryIn(Schema):
     internal_id: str = Field(min_length=1, max_length=100)
-    owner_org_id: str
-    custodian_org_id: str
+    registration_title: str | None = Field(default=None, min_length=1, max_length=200)
+    pbs: Literal["L1", "L2", "L3", "L4", "L5"] | None = None
+    pbs_comments: str = Field(default="", max_length=4000)
+    application_type: Literal[
+        "TWO_WHEELER",
+        "THREE_WHEELER",
+        "FOUR_WHEELER",
+        "COMMERCIAL_VEHICLE",
+        "OTHER",
+        "UNKNOWN",
+    ] = "UNKNOWN"
+    removal_date: date | None = None
+    manufacturing_date: date | None = None
+    manufacturing_year: int | None = Field(default=None, ge=1900, le=2100)
+    rated_energy_kwh: float | None = Field(default=None, gt=0)
+    age_years: float | None = Field(default=None, ge=0, le=100)
+    bms_available: Answer = Answer.UNKNOWN
+    other_specifications: str | None = Field(default=None, max_length=4000)
+    inspection: ReportedInspection | None = None
+    current_owner: str | None = Field(default=None, max_length=200)
+    current_custodian: str | None = Field(default=None, max_length=200)
+    collection_availability: Literal["YES", "NO", "TO_BE_CONFIRMED"] = "TO_BE_CONFIRMED"
+    preferred_timeframe: str | None = Field(default=None, max_length=500)
+    handling_instructions: str | None = Field(default=None, max_length=4000)
+    additional_information: str = Field(default="", max_length=4000)
+    mixed_batch: bool = False
+    manufacturer: str | None = Field(default=None, max_length=120)
+    model: str | None = Field(default=None, max_length=120)
+    serial_number: str | None = Field(default=None, max_length=120)
+    original_vehicle_class: str | None = Field(default=None, max_length=120)
+    nominal_voltage: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    nominal_capacity_ah: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    pack_configuration: str | None = Field(default=None, max_length=120)
+    dimensions_mm: list[float] | None = Field(default=None, min_length=3, max_length=3)
+    service_history: str | None = Field(default=None, max_length=4000)
+    bms_reference: str | None = Field(default=None, max_length=1000)
+    owner_org_id: str | None = None
+    custodian_org_id: str | None = None
     chemistry: Chemistry = Chemistry.UNKNOWN
     form: Form = Form.UNKNOWN
     condition: Condition = Condition.UNKNOWN
@@ -29,6 +65,7 @@ class BatteryIn(Schema):
         "fault",
         "impact/accident",
         "maintenance replacement",
+        "upgrade/replacement",
         "end-of-life",
         "unknown",
         "other",
@@ -53,6 +90,29 @@ class BatteryIn(Schema):
 
     @model_validator(mode="after")
     def consistent(self):
+        if self.inspection is not None:
+            if self.inspection.conducted != "YES" and any(
+                getattr(self.inspection, k) is not None
+                for k in [
+                    "soh_percent",
+                    "soc_percent",
+                    "voltage_v",
+                    "capacity_ah",
+                    "resistance",
+                    "imbalance_v",
+                ]
+            ):
+                raise ValueError(
+                    "Reported measurements require inspections/tests to be marked Yes."
+                )
+            if self.quantity > 1 and self.inspection.scope == "INDIVIDUAL":
+                raise ValueError(
+                    "Batch measurements must be marked sample-only or unknown; do not apply one result to every battery."
+                )
+        if self.dimensions_mm is not None and any(x <= 0 for x in self.dimensions_mm):
+            raise ValueError(
+                "Dimensions must be positive measured lengths, or unknown."
+            )
         if set(self.flags) != set(FLAGS):
             raise ValueError("All eleven critical flags must be explicitly answered.")
         for date in [self.window_start, self.window_end]:

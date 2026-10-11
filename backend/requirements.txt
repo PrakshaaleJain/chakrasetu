@@ -22,3 +22,8 @@ starlette==1.7.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.54.0
+argon2-cffi==25.1.0
+
+Pillow==12.3.0
+
+pypdf==6.20.0

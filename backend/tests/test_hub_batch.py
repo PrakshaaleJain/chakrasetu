@@ -49,6 +49,14 @@ def test_hub_batch_manifest_and_per_asset_custody(client):
     )
     assert r.status_code == 200, r.text
     b = r.json()
+    economics = client.get(
+        "/consolidations/" + b["id"] + "/economics", headers=auth("buyer")
+    )
+    assert economics.status_code == 200, economics.text
+    assert economics.json()["total_transport_paise"] == 500000
+    assert economics.json()["transport_per_battery_paise"] == 250000
+    assert economics.json()["savings_paise"] is None
+
     assert b["data"]["total_mass_kg"] == 84 and b["data"]["savings_paise"] is None
     assert (
         client.post(

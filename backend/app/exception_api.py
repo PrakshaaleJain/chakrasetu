@@ -1,3 +1,4 @@
+from .auth import has_role
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from . import models as m
@@ -11,7 +12,7 @@ router = APIRouter()
 
 
 def visible(db, user, c):
-    if user.role == "REVIEWER" or user.organisation_id == c.owner_org_id:
+    if has_role(user, "REVIEWER") or user.organisation_id == c.owner_org_id:
         return True
     if c.object_type == "battery":
         return can_view_asset(db, user, get(db, m.BatteryAsset, c.object_id))
@@ -29,7 +30,7 @@ def visible(db, user, c):
 
 
 @router.get("/exceptions")
-def exceptions(db=Depends(get_db), user=Depends(current_user)):
+def exceptions(db=Depends(get_db, scope="function"), user=Depends(current_user)):
     return [
         dump(c)
         for c in db.scalars(
@@ -40,7 +41,12 @@ def exceptions(db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.post("/exceptions/{id}/resolve")
-def resolve(id: str, body: ResolveIn, db=Depends(get_db), user=Depends(current_user)):
+def resolve(
+    id: str,
+    body: ResolveIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
+):
     role(user, "REVIEWER")
     c = get(db, m.ExceptionCase, id)
     if c.status == "CLOSED":
@@ -89,7 +95,10 @@ class QualifiedReviewIn(Schema):
 
 @router.post("/exceptions/{id}/qualified-review")
 def qualified(
-    id: str, body: QualifiedReviewIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: QualifiedReviewIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     role(user, "REVIEWER")
     c = get(db, m.ExceptionCase, id)
@@ -136,6 +145,13 @@ def qualified(
             if c.object_type == "battery"
             else context(db, get(db, m.Shipment, c.object_id))[1]
         )
+        from .services.registration import critical_report, level
+
+        if level(asset) == "L5" or critical_report(asset.data):
+            fail(
+                "CRITICAL_HAZARD_REPORTED",
+                "Routine scoped clearance cannot release a critical-hazard report. Obtain qualified emergency instructions and preserve the hold.",
+            )
         asset.data = {
             **asset.data,
             "handling_clearance": {
@@ -148,7 +164,9 @@ def qualified(
         previous = asset.state
         asset.state = "READY_FOR_LISTING"
         receivers = [
-            x for x in eligible_buyers(db, asset, "QUALIFIED_REVIEW") if x["eligible"]
+            x
+            for x in eligible_buyers(db, asset, "QUALIFIED_REVIEW", discovery=True)
+            if x["eligible"]
         ]
         transports = (
             []
@@ -190,8 +208,10 @@ def qualified(
 
 
 @router.get("/audit/{kind}/{id}")
-def history(kind: str, id: str, db=Depends(get_db), user=Depends(current_user)):
-    if user.role != "REVIEWER":
+def history(
+    kind: str, id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
+    if not has_role(user, "REVIEWER"):
         if kind == "battery":
             allowed = can_view_asset(db, user, get(db, m.BatteryAsset, id))
         elif kind == "transaction":

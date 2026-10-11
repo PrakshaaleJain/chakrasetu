@@ -1,3 +1,4 @@
+from .auth import has_role
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, text
 from pydantic import Field
@@ -93,11 +94,11 @@ def validate_batch(db, b):
 
 
 @router.get("/consolidations")
-def batches(db=Depends(get_db), user=Depends(current_user)):
+def batches(db=Depends(get_db, scope="function"), user=Depends(current_user)):
     out = []
     for b in db.scalars(select(m.Consolidation)).all():
         if (
-            user.role == "REVIEWER"
+            has_role(user, "REVIEWER")
             or user.organisation_id in b.data["required_org_ids"]
         ):
             out.append(
@@ -119,7 +120,7 @@ def batches(db=Depends(get_db), user=Depends(current_user)):
 @router.post("/consolidations")
 def create(
     body: ConsolidationIn,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -163,7 +164,7 @@ def create(
                 "required_org_ids": sorted(required),
                 "evidence": body.evidence,
                 "reason": body.reason,
-                "synthetic": True,
+                "synthetic": get(db, m.Organisation, user.organisation_id).synthetic,
                 "cost_source": "EXPLICIT_ACCEPTED_PER_ASSET_QUOTES",
                 "savings_paise": None,
                 "comparison_status": "INCOMPLETE_NO_COMPARABLE_ACCEPTED_DIRECT_BASELINE",
@@ -185,9 +186,9 @@ def create(
         b.data = {
             **b.data,
             "total_mass_kg": mass,
-            "total_accepted_cost_paise": sum(totals)
-            if all(x is not None for x in totals)
-            else None,
+            "total_accepted_cost_paise": (
+                sum(totals) if all(x is not None for x in totals) else None
+            ),
             "notice": "One shared manifest; individual commitments, accepted costs, capacities, custody and receipt remain per asset. No unapproved split or claimed cost saving.",
         }
         audit(
@@ -205,7 +206,7 @@ def create(
 
 
 @router.post("/consolidations/{id}/approve")
-def approve(id: str, db=Depends(get_db), user=Depends(current_user)):
+def approve(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     db.execute(text("BEGIN IMMEDIATE"))
     b = get(db, m.Consolidation, id)
     if user.organisation_id not in b.data["required_org_ids"]:
@@ -219,3 +220,61 @@ def approve(id: str, db=Depends(get_db), user=Depends(current_user)):
         b.status = "APPROVED"
     audit(db, user, "consolidation", b, "APPROVE_MANIFEST", approvals=b.approvals)
     return dump(b)
+
+
+@router.get("/consolidations/{id}/economics")
+def batch_economics(
+    id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
+    from .auth import can_view_asset
+    from .services.commercial import current_terms
+
+    b = get(db, m.Consolidation, id)
+    members = db.scalars(
+        select(m.ConsolidationMember).where(
+            m.ConsolidationMember.consolidation_id == b.id
+        )
+    ).all()
+    rows = []
+    for member in members:
+        shipment = get(db, m.Shipment, member.shipment_id)
+        tx, asset, carrier = context(db, shipment)
+        route = get(db, m.RoutePlan, shipment.route_id)
+        rows.append((shipment, asset, tx, route, carrier))
+    # Costs are private: only expose records that the actor can already inspect.
+    all_assets = [row[1] for row in rows]
+    if not all(can_view_asset(db, user, a) for a in all_assets):
+        fail(
+            "FORBIDDEN",
+            "Batch cost analysis requires access to every underlying asset.",
+            status=403,
+        )
+    details = []
+    for shipment, asset, tx, route, carrier in rows:
+        quote = get(db, m.TransportQuote, shipment.quote_id)
+        details.append(
+            {
+                "asset_id": asset.id,
+                "quantity": asset.quantity,
+                "mass_kg": asset.mass_kg,
+                "committed_quote_paise": quote.total_paise,
+                "source": (
+                    "ACCEPTED_SYNTHETIC_QUOTE"
+                    if asset.data.get("synthetic")
+                    else "ACCEPTED_QUOTE"
+                ),
+                "payer_org_id": current_terms(db, tx).payer_org_id,
+            }
+        )
+    unknown = any(x["committed_quote_paise"] is None for x in details)
+    count = sum(x["quantity"] for x in details)
+    total = None if unknown else sum(x["committed_quote_paise"] for x in details)
+    return {
+        "consolidation_id": b.id,
+        "quantity": count,
+        "total_transport_paise": total,
+        "transport_per_battery_paise": None if total is None else total / count,
+        "items": details,
+        "savings_paise": None,
+        "warning": "Independent committed quotes; no joint discount or savings can be claimed without a comparable approved baseline.",
+    }

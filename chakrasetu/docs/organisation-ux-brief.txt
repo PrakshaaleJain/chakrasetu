@@ -1,0 +1,657 @@
+# ChakraSetu — Comprehensive UX, Organisation Accounts, Capability Management, and Platform Polish
+
+## 1. Your role and objective
+
+You are the lead product engineer, software architect, frontend engineer, backend engineer, database engineer, security engineer, and QA engineer responsible for improving the existing ChakraSetu codebase.
+
+You must work directly in the existing repository. Do not rebuild the project from scratch, replace its architecture unnecessarily, or merely produce a plan.
+
+The existing application uses React, TypeScript, Vite, FastAPI, Pydantic, SQLAlchemy, and SQLite. Inspect the actual repository before making changes and preserve its working transaction, logistics, authentication, shipment, processing, and circularity workflows.
+
+The objective is to make ChakraSetu feel like a coherent, professional, usable platform rather than a technical demonstration with disconnected pages, internal status codes, repetitive warnings, and irrelevant navigation.
+
+Implement the changes, update the database and API where necessary, and verify the results.
+
+## 2. Remove repetitive synthetic-data language throughout the product
+
+This is a priority requirement.
+
+The current interface repeatedly displays phrases such as:
+
+- "SYNTHETIC DEMONSTRATION"
+- "SEED DATA IS SYNTHETIC"
+- "Synthetic participant network"
+- "Synthetic transport response"
+- "Synthetic rate estimate"
+- "Synthetic commercial offer"
+
+These phrases unnecessarily interrupt the user experience. This is a hackathon prototype, and the demonstration participants are expected to be simulated. The application should behave and look like a normal, professional business platform.
+
+### Required changes
+
+Search the entire frontend for user-visible occurrences of "synthetic", "seed data", "demonstration data", and similar repetitive technical disclaimers.
+
+Remove the persistent synthetic-data banners from the sidebar, page headers, dashboards, cards, and other ordinary user-facing screens.
+
+Rewrite awkward labels into normal professional language. For example:
+
+- "Synthetic participant network" becomes "Participant Network".
+- "Submit synthetic commercial offer" becomes "Submit Offer".
+- "Synthetic rate estimate" becomes "Estimated Transport Cost".
+- "Synthetic transport response" becomes "Transport Offer".
+- "Synthetic facility" becomes "Facility".
+- "Synthetic participant" becomes "Organisation".
+
+Review tooltips, forms, empty states, confirmation messages, notifications, and modal dialogs as well. Do not fix only the sidebar while leaving the same wording scattered across the application.
+
+Do not replace every occurrence mechanically. Preserve technical provenance internally where it is necessary for the application's logic, auditability, or data integrity.
+
+### Important distinction
+
+Removing synthetic wording from the interface does not authorize the application to fabricate real-world claims.
+
+The platform may present simulated participants and transactions through a realistic interface. However:
+
+- Do not claim that an actual external business has verified its identity if that has not happened.
+- Do not label a capability as approved merely because it was present in the seed data.
+- Do not present a configured rate-card estimate as a quote submitted by a real transporter.
+- Do not invent real contact information, completed physical deliveries, or verified operational evidence.
+
+Preserve distinctions between declared, pending, approved, rejected, and suspended capabilities, as well as between estimated costs, submitted offers, accepted quotes, and recorded transactions.
+
+Do not expose these distinctions through repetitive "synthetic" warnings. Communicate the actual operational status only when relevant to the user's decision.
+
+Do not alter the existing development-only safeguards simply to make the production interface look normal. Instead, make the seeded environment and its underlying provenance compatible with a polished demonstration experience.
+
+The intended result is an ordinary-looking ChakraSetu interface, not an interface that continually reminds its users that it is a prototype.
+
+## 3. Adopt the correct account and organisation model
+
+For the current version, use **one account per organisation**.
+
+This is a deliberate simplification for the hackathon and the current product stage. Do not build a complex individual-user and organisation-membership system as the primary user experience.
+
+An account represents an organisation operating on ChakraSetu. The organisation can perform multiple roles and maintain multiple capabilities under the same account.
+
+For example, one organisation might act as:
+
+- A transporter.
+- A battery refurbisher.
+- A second-life integration operator.
+- A recycler or material processor.
+
+These roles and capabilities must not require separate logins.
+
+### Required model
+
+Inspect the existing database and authentication implementation first. Reuse the existing models wherever practical.
+
+The conceptual structure should be:
+
+**Organisation account**
+- Authentication credentials and account status.
+- Organisation profile and logo.
+- Contact information.
+- Business description and operating locations.
+- Multiple operational roles.
+- Multiple declared capabilities.
+- Capability-verification history.
+- Relevant facilities and their specific capabilities.
+- Listings, offers, transactions, shipments, and downstream records.
+
+A facility should retain its own capabilities where appropriate. An organisation's declared ability to perform a process does not automatically establish that every facility it operates can perform that process.
+
+### Multiple roles
+
+Allow one organisation to have multiple roles simultaneously.
+
+Do not require an organisation to choose exactly one permanent role during registration. It should be possible to add or remove roles through the organisation profile, subject to appropriate verification and permission rules.
+
+For example, an organisation initially registered as a transporter may subsequently request permission to operate as a battery refurbisher.
+
+It should not need to create a second account to do so.
+
+The organisation's available workflows and navigation should adapt to its current roles and permissions.
+
+### Account and database integrity
+
+Avoid duplicating the organisation's identity across separate accounts.
+
+Preserve existing records and relationships during any necessary schema migration. Do not delete transactions, batteries, shipments, or processing records merely to simplify the account model.
+
+If the existing implementation uses individual users and organisation memberships extensively, assess the migration carefully. Maintain backward compatibility where practical and document any unavoidable changes.
+
+For the current hackathon experience, the organisation should be the primary authenticated participant.
+
+## 4. Role-aware navigation
+
+The existing application exposes too many tabs to every participant, regardless of relevance. Replace this with a permission-aware navigation system.
+
+Build a centralized navigation configuration that defines each page's name, icon, required permission, and intended navigation location.
+
+Navigation must reflect the organisation's available roles, approved capabilities, and operational permissions.
+
+### Example navigation
+
+An originator should primarily see:
+
+- Overview.
+- Register a Battery.
+- My Battery Listings.
+- Transactions.
+- Shipments.
+- Participant Network.
+- My Organisation.
+
+A transporter should primarily see:
+
+- Overview.
+- Available Transport Requests.
+- My Transport Offers.
+- My Shipments.
+- Transport Capacity.
+- Participant Network.
+- My Organisation.
+
+A refurbisher or second-life operator should primarily see:
+
+- Overview.
+- Available Batteries.
+- My Offers.
+- Processing and Operations.
+- Products and Deployments.
+- Transactions.
+- Shipments.
+- Participant Network.
+- My Organisation.
+
+A recycler, material processor, refiner, or manufacturer should see the relevant incoming-material, processing, material-lot, downstream-transaction, and shipment workflows.
+
+An organisation with several roles should receive the combined set of relevant workflows without duplicate navigation items.
+
+The examples are starting points. Inspect the existing domain logic and permissions before finalizing the configuration.
+
+### Navigation requirements
+
+- Remove navigation entries irrelevant to the organisation's roles and permissions.
+- Keep account and profile management consistently accessible.
+- Group specialised operational functions logically.
+- Avoid presenting every API or administrative module as a top-level tab.
+- Provide clear navigation labels rather than internal module names.
+- Ensure that direct URL access is also protected by authorization.
+- Enforce permissions in the backend, not only by hiding frontend links.
+
+Do not introduce an unnecessary role-switching experience if the organisation can hold multiple roles simultaneously. Users should not have to pretend to be a different organisation to access another approved capability.
+
+Administrative verification functions must remain available only to appropriately authorized ChakraSetu administrators.
+
+## 5. Create a complete organisation profile
+
+The current basic account panel is not sufficient. Create a dedicated organisation profile experience accessible through "My Organisation".
+
+This page is the central place where an organisation manages its identity, contact information, operating locations, roles, capabilities, and verification requests.
+
+### Organisation information
+
+Support the following fields where appropriate:
+
+- Official organisation name.
+- Display name.
+- Organisation logo.
+- Business description.
+- Organisation type.
+- Business email.
+- Business phone number.
+- Website.
+- Registered or primary address.
+- Operating regions.
+- Operating locations and facilities.
+- Relevant business identifiers, where applicable.
+- Organisation roles.
+- Declared capabilities.
+- Approved capabilities.
+- Pending verification requests.
+
+Distinguish editable profile information from fields that require administrative review or additional authorization.
+
+### Editing experience
+
+Provide an explicit "Edit Organisation Profile" action.
+
+Users should be able to edit ordinary profile information without navigating through unrelated administrative screens.
+
+Group fields logically and explain required information clearly.
+
+Allow the organisation to save changes, cancel editing, and see a confirmation after a successful update.
+
+Validate fields appropriately and show useful errors if a change cannot be saved.
+
+Ordinary edits such as changing a business description, display name, website, or contact number should not automatically trigger a capability-verification process.
+
+For identity-sensitive fields, use appropriate validation and review requirements rather than applying the same rules to every field.
+
+## 6. Capabilities must be managed within the organisation profile
+
+This is one of the most important requirements.
+
+The organisation must be able to view, add, modify, and request removal of its operational roles and capabilities from a dedicated section within "My Organisation".
+
+Do not scatter capability management across unrelated pages.
+
+### Capability examples
+
+Depending on the existing domain model, capabilities may describe:
+
+- Transport of ordinary battery consignments.
+- Specialist battery handling.
+- Battery inspection and diagnostics.
+- Battery refurbishment.
+- Second-life integration.
+- Recycling.
+- Material processing.
+- Material refining.
+- Manufacturing.
+- Particular battery chemistries or form factors.
+- Particular processing technologies or handling scopes.
+
+Do not hardcode every example as a universally applicable capability. Reuse the existing capability taxonomy and extend it only where the domain model requires it.
+
+### Capability management interface
+
+Display a capability card or row for each relevant capability, showing:
+
+- Capability name.
+- Scope or description.
+- Applicable facility, if any.
+- Current verification status.
+- Date last updated.
+- Available actions.
+
+Provide actions such as:
+
+- Add a Capability.
+- Edit Capability Details.
+- Request Verification.
+- Request Removal.
+- View Verification Status.
+
+An organisation should be able to update its descriptive information and requested scope easily.
+
+However, changing a descriptive field must not silently expand the organisation's approved operational permissions.
+
+For example, an approved transporter must not automatically gain specialist battery-handling permission merely by editing a text field.
+
+Separate the user-declared scope from the approved scope whenever the distinction affects safety, eligibility, or authorization.
+
+## 7. Simple capability verification without excessive evidence uploads
+
+The current product requests evidence too frequently and makes routine workflows unnecessarily burdensome.
+
+Replace the default assumption that every change requires document uploads with a proportionate verification process.
+
+### Ordinary profile changes
+
+Save ordinary profile edits directly when the user is authorized to make them.
+
+Do not create a verification request merely because an organisation updates its business description, changes its logo, or corrects a non-sensitive contact detail.
+
+### Capability changes
+
+When an organisation requests a new capability or a change to an existing capability:
+
+1. Collect the requested capability and relevant scope.
+2. Validate the request.
+3. Store a persistent verification-request record.
+4. Mark the request as pending.
+5. Show a confirmation message.
+6. Make the request available in the authorized ChakraSetu review queue.
+
+Do not demand an evidence document for every capability request at submission time.
+
+Instead, tell the user that the ChakraSetu team will review the request and contact the organisation if further information or documents are required.
+
+Use the following confirmation message:
+
+"Your request has been submitted successfully. The ChakraSetu team will review the information and contact your organisation within 48 hours with the next steps. Your existing approved capabilities will remain unchanged while this request is under review."
+
+Treat 48 hours as a stated service target for the demonstration, not an automatic approval deadline or a guaranteed real-world service level.
+
+### Capability request statuses
+
+Use clear user-facing labels such as:
+
+- Pending Verification.
+- Additional Information Requested.
+- Approved.
+- Not Approved.
+- Suspended.
+- Withdrawn.
+
+Use only statuses supported by the actual workflow. Do not create meaningless states merely to make the interface look comprehensive.
+
+When the team requests additional information, explain what is needed and why. Permit the organisation to respond without restarting the entire process.
+
+### Reviewer workflow
+
+Authorized ChakraSetu reviewers must be able to:
+
+- View pending requests.
+- Review the organisation and relevant facility.
+- Inspect the requested scope.
+- Request further information.
+- Approve or reject the request.
+- Record a reason for the decision.
+- View previous decisions and changes.
+
+A capability must not become operationally approved until the appropriate reviewer has approved it.
+
+If a capability is removed or its approved scope changes, retain an auditable history. Do not silently delete historical information associated with completed transactions or shipments.
+
+## 8. Participant Network and organisation discovery
+
+Redesign the Participant Network as a professional directory of organisations operating on ChakraSetu.
+
+The directory should help an organisation identify relevant participants and understand what they do before contacting them or initiating a transaction.
+
+### Participant cards
+
+Each card should display, where available:
+
+- Organisation logo.
+- Organisation name.
+- Business description.
+- Organisation type.
+- City or operating region.
+- Relevant operational roles.
+- Relevant declared and approved capabilities.
+- Verification status.
+- A "View Organisation Profile" link.
+
+Use a consistent visual hierarchy, suitable logo dimensions, and a fallback avatar when no logo is available.
+
+Do not display every database field on the card. Keep the summary readable and reserve detailed information for the profile page.
+
+### Search and filtering
+
+Provide search and filters for useful attributes supported by the database, such as:
+
+- Organisation name.
+- Organisation type.
+- Location.
+- Approved operational capability.
+- Relevant facility capabilities.
+
+The directory should combine an organisation's multiple roles into one participant card. An organisation must not appear as several unrelated participants merely because it has several capabilities.
+
+### Detailed organisation profile
+
+Clicking "View Organisation Profile" should open a dedicated page.
+
+The profile should show the organisation's description, logo, location, operating facilities, roles, relevant capabilities, verification statuses, and permitted contact options.
+
+Distinguish clearly between declared capabilities and approved capabilities.
+
+Provide a clear route back to the directory and appropriate links to the available business workflows.
+
+Do not fabricate information merely to fill empty profile fields.
+
+## 9. Contact details with an eye-icon reveal control
+
+Contact information should be accessible when relevant but should not be exposed indiscriminately.
+
+Implement an eye-icon control that allows an authorized viewer to reveal and conceal contact details.
+
+Before activation, mask or conceal private contact information. When the viewer activates the control, reveal the fields they are permitted to see. Activating it again should hide those fields.
+
+Provide accessible labels such as "Show contact details" and "Hide contact details".
+
+Distinguish between:
+
+- Public business contact information.
+- Contact information visible to authenticated participants.
+- Private or restricted personal information.
+
+Do not assume that every field should be visible to every account.
+
+The backend must enforce the relevant permissions. It is not sufficient to return all private fields to the frontend and merely hide them visually.
+
+Where appropriate, record an audit event when sensitive contact information is accessed.
+
+## 10. Organisation logos and image uploads
+
+Allow each organisation to upload and update its logo from the organisation profile.
+
+Support personal or facility images only where they serve a genuine product need.
+
+The upload process must:
+
+- Accept only supported image formats.
+- Enforce file-size limits.
+- Validate uploads on the server.
+- Generate safe filenames.
+- Prevent path traversal and executable-file uploads.
+- Restrict upload, replacement, and deletion operations to authorized users.
+- Provide a default avatar or logo when no image exists.
+- Handle invalid files and failed uploads with clear messages.
+
+Do not store image binaries in arbitrary JSON database fields.
+
+For local development, use an appropriate upload directory. For deployment, configure persistent file storage or object storage so that uploaded logos survive application redeployments.
+
+Preserve existing database records and do not introduce unnecessary dependencies.
+
+## 11. Professional UX writing throughout the application
+
+The current application frequently displays terse fragments, bullet-heavy instructions, internal status codes, and technical wording. Improve the entire product, not just the new profile pages.
+
+Inspect all user-facing text across:
+
+- Navigation.
+- Dashboards.
+- Forms.
+- Tables.
+- Detail pages.
+- Status badges.
+- Buttons.
+- Tooltips.
+- Dialogs.
+- Notifications.
+- Success and error messages.
+- Empty states.
+- Loading states.
+- Confirmation screens.
+- Validation messages.
+- Logistics and shipment workflows.
+- Transaction and processing workflows.
+- Participant Network.
+- Account and capability management.
+
+### Writing standards
+
+Use professional, clear, natural language.
+
+Prefer complete sentences when explaining what an action does, what information is required, what will happen next, or why a user cannot proceed.
+
+Use short button labels when the action is self-explanatory, but accompany complex actions with supporting descriptions.
+
+Avoid unnecessary all-caps text, unexplained abbreviations, database terminology, internal identifiers, and raw enum values.
+
+Do not turn every page into a wall of prose. The goal is clarity, not verbosity. Tables, cards, concise labels, and lists are appropriate when they genuinely improve comprehension.
+
+The user should always understand:
+
+- What they are looking at.
+- What action they can take.
+- What information they need to provide.
+- What happens when they submit.
+- Whether the action succeeded.
+- What the current status means.
+- What they should do next if something is blocked.
+
+### Example wording
+
+Replace `CONFIRMED_PENDING_PICKUP` with:
+
+"The sale is confirmed. The battery is awaiting collection."
+
+Replace `AGREED_PENDING_LOGISTICS` with:
+
+"The sale terms have been agreed. Transport arrangements are pending."
+
+Replace `NO_TRANSPORTER` with:
+
+"No transporter has accepted the request yet. You can request additional quotes or review the available arrangements."
+
+Replace `PENDING_REVIEW` with:
+
+"Your request is awaiting verification by the ChakraSetu team."
+
+Replace "Emit Event" with:
+
+"Record Shipment Update."
+
+Replace "Create Route Plan" with:
+
+"Find Available Transport Routes."
+
+Replace "Select Capability" with:
+
+"Choose the capability your organisation would like to add."
+
+These are examples, not an exhaustive list. Inspect all actual user-facing states and create a consistent mapping.
+
+Keep backend enum values and internal identifiers stable unless a genuine domain-model change is required.
+
+## 12. Database and API implementation
+
+Inspect the current models, API endpoints, and migrations before changing the schema.
+
+Reuse the existing organisation, account, facility, capability, and security models where possible.
+
+Implement or extend the APIs necessary to support:
+
+- Reading and updating organisation profiles.
+- Uploading, replacing, and retrieving organisation logos.
+- Managing multiple roles under one organisation account.
+- Viewing, adding, editing, and requesting removal of capabilities.
+- Submitting capability-verification requests.
+- Viewing request status and review history.
+- Reviewing, approving, rejecting, or requesting additional information.
+- Retrieving public and authorized private contact details.
+- Listing and filtering organisation profiles.
+- Reading and updating facility information where appropriate.
+
+Use Pydantic validation, authorization checks, transaction handling, and suitable constraints.
+
+A request to modify a capability must not directly overwrite its approved permissions without the appropriate verification process.
+
+Do not return password hashes, session tokens, recovery tokens, or other secrets through profile endpoints.
+
+If schema changes are necessary, use a migration that preserves existing data and can be tested against the current database.
+
+## 13. Preserve the existing core platform
+
+These changes must not break ChakraSetu's existing functionality.
+
+Preserve:
+
+- Authentication and authorization.
+- Battery registration and listings.
+- Offers and transactions.
+- Commercial terms and acceptance.
+- Transporter quotes and logistics budgets.
+- Capacity reservations.
+- Shipment creation and tracking.
+- Custody events.
+- Safety holds and exception handling.
+- Facility eligibility.
+- Processing jobs and transformation records.
+- Second-life product tracking.
+- Recycling batches and recovered materials.
+- Downstream handoffs.
+- Traceability and mass reconciliation.
+
+The objective is to improve the user experience and organisation model while retaining the underlying operational logic.
+
+Do not replace working domain services with superficial frontend simulations.
+
+## 14. Testing requirements
+
+Add or update automated tests covering:
+
+1. The same organisation can have multiple roles without creating multiple accounts.
+2. Navigation reflects the organisation's roles and permissions.
+3. A user cannot access unauthorized operations by manually calling an API.
+4. Organisation profile edits are correctly persisted.
+5. An organisation cannot edit another organisation's profile.
+6. Multiple capabilities can be managed under one organisation.
+7. Ordinary profile edits do not unnecessarily trigger verification.
+8. Capability requests remain pending until reviewed.
+9. A pending capability cannot be used to bypass eligibility checks.
+10. Capability approval, rejection, suspension, and removal preserve historical records appropriately.
+11. The directory displays one card per organisation, not one card per capability.
+12. Contact details are returned only to authorized viewers.
+13. The contact-reveal control works correctly.
+14. Logo uploads enforce file validation and authorization.
+15. No repetitive synthetic-data banners remain in ordinary user-facing screens.
+16. Raw internal status values are not exposed in the primary interface.
+17. Existing transaction, logistics, shipment, safety, and circularity tests continue to pass.
+18. The frontend type check and production build succeed.
+19. The principal user journeys work in a browser.
+
+Do not report a test as passed unless it was actually executed successfully.
+
+## 15. Implementation procedure
+
+Proceed in this order:
+
+### Phase 1 — Audit
+
+Inspect the repository, current authentication model, organisation and facility models, capability logic, navigation, all user-visible synthetic-data labels, profile components, and existing tests.
+
+Document the changes required before editing the code.
+
+### Phase 2 — Organisation account model
+
+Implement or adapt the one-account-per-organisation experience and multiple-role representation without destroying existing records.
+
+### Phase 3 — Navigation and permissions
+
+Implement centralized role-aware navigation and verify that backend permissions remain authoritative.
+
+### Phase 4 — Profiles and capability management
+
+Implement the organisation profile, editable information, logo upload, capability management, and verification-request workflow.
+
+### Phase 5 — Participant Network
+
+Implement organisation cards, detailed profiles, filtering, and authorized contact-detail reveal controls.
+
+### Phase 6 — UX writing and demo polish
+
+Remove repetitive synthetic-data language and rewrite technical user-facing wording throughout the application.
+
+### Phase 7 — Verification
+
+Run the relevant backend tests, frontend checks, production build, and browser-based workflow tests. Fix regressions rather than merely documenting them.
+
+Update `IMPLEMENTATION_STATUS.md` with the changes completed, database migrations, test results, deployment considerations, and remaining limitations.
+
+## 16. Definition of done
+
+The work is complete only when:
+
+- The ordinary interface no longer repeatedly advertises synthetic demonstration data.
+- One organisation can use a single account to perform multiple approved roles.
+- Navigation displays the relevant workflows for that organisation.
+- The organisation can edit its profile and manage capability requests in one place.
+- Capability changes follow the appropriate verification process without unnecessary document uploads.
+- The Participant Network presents professional organisation cards and detailed profiles.
+- Contact information is revealed only to authorized viewers.
+- Logos can be uploaded, displayed, and retained across redeployments when persistent storage is configured.
+- User-facing wording is clear, professional, and consistent.
+- Existing battery, transaction, transport, shipment, safety, and circularity workflows continue to function.
+- Database changes preserve existing records.
+- The relevant tests and frontend build have actually been run, with their results documented.
+
+Begin by inspecting the existing repository. Then implement the changes directly. Do not stop after producing a plan, a list of recommendations, or static mockups.

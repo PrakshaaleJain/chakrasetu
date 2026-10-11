@@ -17,6 +17,7 @@ class Form(StrEnum):
     CELL = "CELL"
     MODULE = "MODULE"
     PACK = "PACK"
+    OTHER = "OTHER"
     LOOSE_COMPONENT = "LOOSE_COMPONENT"
     UNKNOWN = "UNKNOWN"
 

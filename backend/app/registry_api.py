@@ -1,4 +1,3 @@
-import hashlib
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from pydantic import Field
@@ -8,12 +7,12 @@ from .auth import current_user, role
 from .common import dump, get, audit, future
 from .schemas import Schema
 from .enums import Chemistry, Pathway
-from .config import DEMO_MODE
-from .seed import DEMO_ACTORS
 
 router = APIRouter()
 
 
+<<<<<<< HEAD
+=======
 @router.get("/demo/users")
 def demo_users():
     if not DEMO_MODE:
@@ -31,6 +30,20 @@ def demo_users():
     ]
 
 
+@router.post("/demo/seed-presentation")
+def seed_presentation_endpoint(db=Depends(get_db)):
+    if not DEMO_MODE:
+        fail("FORBIDDEN", "Demo operations are disabled outside DEMO_MODE.", status=403)
+    from .seed_presentation import seed_presentation_data
+
+    seed_presentation_data(db)
+    return {
+        "status": "SUCCESS",
+        "message": "Presentation demonstration fixtures populated.",
+    }
+
+
+>>>>>>> b275612 (iteration 5)
 @router.get("/me")
 def me(user=Depends(current_user)):
     return {
@@ -42,25 +55,38 @@ def me(user=Depends(current_user)):
 
 
 @router.get("/network")
-def network(db=Depends(get_db), user=Depends(current_user)):
+def network(db=Depends(get_db, scope="function"), user=Depends(current_user)):
+    # Explicit allowlists: new profile/contact metadata must never leak through the legacy directory.
+    orgs = []
+    for o in db.scalars(select(m.Organisation)):
+        row = dump(o)
+        row["data"] = {}
+        orgs.append(row)
+    allowed = {
+        "declared_chemistries",
+        "verified_chemistries",
+        "chemistries",
+        "forms",
+        "conditions",
+        "handling_scope",
+        "center",
+        "radius_km",
+        "rate_source",
+        "window_start",
+        "window_end",
+    }
+
+    def projection(model):
+        return [
+            {**dump(x), "data": {k: v for k, v in x.data.items() if k in allowed}}
+            for x in db.scalars(select(model))
+        ]
+
     return {
-        k: [
-            {
-                **dump(x),
-                "data": {
-                    a: b
-                    for a, b in x.data.items()
-                    if a not in ["contact", "phone", "email", "address"]
-                },
-            }
-            for x in db.scalars(select(model)).all()
-        ]
-        for k, model in [
-            ("organisations", m.Organisation),
-            ("facilities", m.Facility),
-            ("capabilities", m.FacilityCapability),
-            ("transporters", m.TransporterProfile),
-        ]
+        "organisations": orgs,
+        "facilities": projection(m.Facility),
+        "capabilities": projection(m.FacilityCapability),
+        "transporters": projection(m.TransporterProfile),
     }
 
 
@@ -72,7 +98,9 @@ class OrgIn(Schema):
 
 
 @router.post("/organisations")
-def organisation(body: OrgIn, db=Depends(get_db), user=Depends(current_user)):
+def organisation(
+    body: OrgIn, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     role(user, "REVIEWER")
     obj = m.Organisation(
         name=body.name,
@@ -100,8 +128,10 @@ class FacilityIn(Schema):
 
 
 @router.post("/facilities")
-def facility(body: FacilityIn, db=Depends(get_db), user=Depends(current_user)):
-    role(user, "BUYER", "HUB", "REVIEWER")
+def facility(
+    body: FacilityIn, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
+    role(user, "BUYER", "HUB", "REVIEWER", "ORG_ADMIN", "TECHNICIAN")
     obj = m.Facility(
         organisation_id=user.organisation_id,
         name=body.name,
@@ -141,7 +171,11 @@ class TransporterIn(Schema):
 
 
 @router.post("/transporters")
-def transporter(body: TransporterIn, db=Depends(get_db), user=Depends(current_user)):
+def transporter(
+    body: TransporterIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
+):
     role(user, "TRANSPORTER")
     obj = m.TransporterProfile(
         organisation_id=user.organisation_id,
@@ -178,7 +212,7 @@ def review_network(
     kind: str,
     id: str,
     body: VerificationIn,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
 ):
     role(user, "REVIEWER")
@@ -208,6 +242,9 @@ def review_network(
     review = {**body.model_dump(mode="json"), "actor_id": user.id, "timestamp": m.now()}
     obj.data = {
         **obj.data,
+        "request_status": (
+            "APPROVED" if body.verification == "VERIFIED" else body.verification
+        ),
         "verification_reviews": [*obj.data.get("verification_reviews", []), review],
     }
     if kind in ["capability", "transporter"] and body.verification == "VERIFIED":

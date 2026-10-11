@@ -1,334 +1,163 @@
 import { useState } from "react";
-import type { Network as NetworkData, Actor, Action } from "./types";
-import { Panel, Field, Badge, RouteMap, human, date } from "./components";
-export function Network({
-  network,
-  actor,
-  action,
-}: {
-  network: NetworkData;
-  actor: Actor;
-  action: Action;
-}) {
-  const [show, setShow] = useState(false);
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState("RECEIVER");
-  const [path, setPath] = useState("RECYCLING");
-  const [chem, setChem] = useState("LFP");
-  const [mass, setMass] = useState("500");
-  const [lat, setLat] = useState("12.97");
-  const [lng, setLng] = useState("77.59");
-  const [reviewKind, setReviewKind] = useState("capability");
-  const [reviewId, setReviewId] = useState("");
-  const [status, setStatus] = useState("VERIFIED");
-  const [scope, setScope] = useState("ORDINARY");
-  const [evidence, setEvidence] = useState("");
-  const [reason, setReason] = useState("");
-  const records =
-    reviewKind === "organisation"
-      ? network.organisations
-      : reviewKind === "facility"
-        ? network.facilities
-        : reviewKind === "capability"
-          ? network.capabilities
-          : network.transporters;
-  const selected = records.find((x) => x.id === reviewId) || records[0];
-  return (
-    <>
-      <div className="toolbar">
-        <p className="muted">
-          Identity, declared capability, scoped verification and current
-          availability remain separate.
-        </p>
-        <button onClick={() => setShow(!show)}>
-          {show ? "Hide onboarding" : "Onboard / review participant"}
+import { useResource } from "./api";
+import { Panel, Field, Badge, Empty, human } from "./components";
+import {
+  ContactReveal,
+  OrganisationAvatar,
+  ProfileSummary,
+} from "./OrganisationCard";
+import type { OrganisationProfile } from "./organisationTypes";
+export function Network({ version }: { version: number }) {
+  const [query, setQuery] = useState(""),
+    [location, setLocation] = useState(""),
+    [type, setType] = useState(""),
+    [capability, setCapability] = useState(""),
+    [selected, setSelected] = useState("");
+  const params = new URLSearchParams({
+    q: query,
+    location,
+    organisation_type: type,
+    capability,
+  });
+  const {
+    data: profiles,
+    loading,
+    error,
+  } = useResource<OrganisationProfile[]>(
+    "/organisation-profiles?" + params,
+    version,
+    [],
+  );
+  const {
+    data: profile,
+    loading: detailLoading,
+    error: detailError,
+  } = useResource<OrganisationProfile | null>(
+    selected ? "/organisation-profiles/" + selected : null,
+    version,
+    null,
+  );
+  if (selected)
+    return (
+      <>
+        <button onClick={() => setSelected("")}>
+          ← Back to Participant Network
         </button>
-      </div>
-      {show && (
-        <Panel title="Participant onboarding and scoped review">
-          <div className="two-cols">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (actor.role === "TRANSPORTER")
-                  action("/transporters", {
-                    name,
-                    capacity_kg: Number(mass),
-                    center: [Number(lat), Number(lng)],
-                    radius_km: 250,
-                  });
-                else if (actor.role === "REVIEWER")
-                  action("/organisations", {
-                    name,
-                    role: kind === "HUB" ? "HUB" : "BUYER",
-                    address: "Synthetic participant declared address",
-                    contact: evidence,
-                  });
-                else
-                  action("/facilities", {
-                    name,
-                    kind,
-                    lat: Number(lat),
-                    lng: Number(lng),
-                    pathway: path,
-                    chemistries: chem.split(",").map((x) => x.trim()),
-                    capacity_kg: Number(mass),
-                  });
-              }}
-            >
-              <h4>Create pending record</h4>
-              <p className="muted">
-                New declarations are unverified and cannot pass matching. A
-                reviewer must verify identity and each capability separately.
-              </p>
-              <Field label="Organisation / facility / transporter name">
-                <input
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </Field>
-              <div className="form-grid">
-                <Field label="Facility kind / organisation role">
-                  <select
-                    value={kind}
-                    onChange={(e) => setKind(e.target.value)}
-                  >
-                    {["RECEIVER", "HUB", "REVIEW"].map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Declared pathway">
-                  <select
-                    value={path}
-                    onChange={(e) => setPath(e.target.value)}
-                  >
-                    {[
-                      "REPAIR_REFURBISHMENT",
-                      "SECOND_LIFE_ASSESSMENT",
-                      "RECYCLING",
-                      "QUALIFIED_REVIEW",
-                    ].map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Chemistries · comma separated">
-                  <input
-                    value={chem}
-                    onChange={(e) => setChem(e.target.value)}
-                  />
-                </Field>
-                <Field label="Declared capacity · kg">
-                  <input
-                    type="number"
-                    min="1"
-                    value={mass}
-                    onChange={(e) => setMass(e.target.value)}
-                  />
-                </Field>
-                <Field label="Latitude">
-                  <input
-                    type="number"
-                    step="any"
-                    value={lat}
-                    onChange={(e) => setLat(e.target.value)}
-                  />
-                </Field>
-                <Field label="Longitude">
-                  <input
-                    type="number"
-                    step="any"
-                    value={lng}
-                    onChange={(e) => setLng(e.target.value)}
-                  />
-                </Field>
-              </div>
-              {actor.role === "REVIEWER" && (
-                <Field label="Authorised contact · private">
-                  <input
-                    required
-                    value={evidence}
-                    onChange={(e) => setEvidence(e.target.value)}
-                  />
-                </Field>
-              )}
-              <button>Create pending record</button>
-            </form>
-            {actor.role === "REVIEWER" && (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (selected)
-                    action(
-                      "/network/" + reviewKind + "/" + selected.id + "/review",
-                      {
-                        verification: status,
-                        valid_until: new Date(
-                          Date.now() + 365 * 86400000,
-                        ).toISOString(),
-                        reason,
-                        evidence,
-                        chemistries: chem.split(",").map((x) => x.trim()),
-                        forms: ["PACK", "MODULE"],
-                        conditions:
-                          scope === "CONTROLLED_HANDLING"
-                            ? ["DAMAGED_REPORTED", "UNKNOWN", "DEGRADED"]
-                            : ["WORKING", "DEGRADED", "NON_FUNCTIONAL"],
-                        handling_scope: scope,
-                        window_start: new Date().toISOString(),
-                        window_end: new Date(
-                          Date.now() + 90 * 86400000,
-                        ).toISOString(),
-                      },
-                    );
-                }}
-              >
-                <h4>Record a scoped verification decision</h4>
-                <Field label="Verification applies to">
-                  <select
-                    value={reviewKind}
-                    onChange={(e) => {
-                      setReviewKind(e.target.value);
-                      setReviewId("");
-                    }}
-                  >
-                    {[
-                      "organisation",
-                      "facility",
-                      "capability",
-                      "transporter",
-                    ].map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Record">
-                  <select
-                    value={selected?.id || ""}
-                    onChange={(e) => setReviewId(e.target.value)}
-                  >
-                    {records.map((x) => (
-                      <option value={x.id} key={x.id}>
-                        {"name" in x ? x.name : x.id}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <div className="form-grid">
-                  <Field label="Review outcome">
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                    >
-                      {[
-                        "VERIFIED",
-                        "UNDER_REVIEW",
-                        "REJECTED",
-                        "SUSPENDED",
-                        "EXPIRED",
-                      ].map((x) => (
-                        <option key={x}>{x}</option>
+        {detailLoading ? (
+          <Empty>Loading organisation profile…</Empty>
+        ) : detailError ? (
+          <p role="alert">{detailError}</p>
+        ) : (
+          profile && (
+            <>
+              <Panel title="Organisation Profile">
+                <ProfileSummary profile={profile} />
+                <ContactReveal key={profile.id} id={profile.id} />
+              </Panel>
+              <Panel title="Facilities & Capabilities">
+                {profile.facilities.map((f) => (
+                  <div className="evidence" key={f.id}>
+                    <h4>{f.name}</h4>
+                    <Badge value={f.registration} />
+                    <p>{f.description || human(f.kind)}</p>
+                    <p className="muted">
+                      Location: {f.lat}, {f.lng}
+                    </p>
+                    {profile.capabilities
+                      .filter((c) => c.facility_id === f.id)
+                      .map((c) => (
+                        <div key={c.id} className="capability">
+                          <strong>{human(c.name)}</strong>
+                          <Badge value={c.status} />
+                          <p>
+                            {c.scope.chemistries.join(", ")}{" "}
+                            {c.scope.material_categories.join(", ")} · Capacity{" "}
+                            {c.scope.capacity_kg ?? "Unknown"} kg
+                          </p>
+                        </div>
                       ))}
-                    </select>
-                  </Field>
-                  <Field label="Handling scope">
-                    <select
-                      value={scope}
-                      onChange={(e) => setScope(e.target.value)}
-                    >
-                      <option>ORDINARY</option>
-                      <option>CONTROLLED_HANDLING</option>
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Reason">
-                  <textarea
-                    required
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                  />
-                </Field>
-                <Field label="Evidence reference">
-                  <input
-                    required
-                    value={evidence}
-                    onChange={(e) => setEvidence(e.target.value)}
-                  />
-                </Field>
-                <p className="notice">
-                  For capability/transporter verification, chemistries use the
-                  left-hand field; form scope is packs/modules. Verification is
-                  mock demo data.
-                </p>
-                <button className="primary">
-                  Record review · retain audit history
-                </button>
-              </form>
-            )}
-          </div>
-        </Panel>
-      )}
-      <Panel title="Synthetic participant network">
-        <RouteMap routes={[]} network={network} />
-        <p className="notice">
-          Every organisation, registration, capacity and verification shown here
-          is fictional demonstration data.
-        </p>
-        <div className="network-grid">
-          {network.facilities.map((f) => (
-            <div className="network-card" key={f.id}>
-              <div className="card-line">
-                <span className="battery-avatar">
-                  {f.kind === "HUB" ? "▣" : "↻"}
-                </span>
-                <Badge value={f.registration} />
-              </div>
-              <h3>{f.name}</h3>
-              <p>{human(f.kind)} · synthetic</p>
-              {network.capabilities
-                .filter((c) => c.facility_id === f.id)
-                .map((c) => (
-                  <div className="capability" key={c.id}>
-                    <strong>{human(c.pathway)}</strong>
-                    <small>
-                      Declared: {c.data.declared_chemistries?.join(", ")}
-                    </small>
-                    <small>
-                      Verified mock scope:{" "}
-                      {c.data.verified_chemistries?.join(", ")} ·{" "}
-                      {c.data.handling_scope}
-                    </small>
-                    <small>
-                      Capacity {c.capacity_kg} kg · declared available{" "}
-                      {c.available_kg} kg
-                    </small>
-                    <small>
-                      {human(c.verification)} · validity {date(c.valid_until)}
-                    </small>
                   </div>
                 ))}
-            </div>
-          ))}
+                {profile.capabilities
+                  .filter((c) => !c.facility_id)
+                  .map((c) => (
+                    <div key={c.id} className="evidence">
+                      <strong>{human(c.name)}</strong>{" "}
+                      <Badge value={c.status} />
+                    </div>
+                  ))}
+              </Panel>
+            </>
+          )
+        )}
+      </>
+    );
+  return (
+    <>
+      <Panel title="Find an Organisation">
+        <div className="form-grid">
+          <Field label="Organisation name">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search the network"
+            />
+          </Field>
+          <Field label="Location or operating region">
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+          </Field>
+          <Field label="Organisation type">
+            <input value={type} onChange={(e) => setType(e.target.value)} />
+          </Field>
+          <Field label="Approved capability">
+            <input
+              value={capability}
+              onChange={(e) => setCapability(e.target.value)}
+              placeholder="For example, refurbishment"
+            />
+          </Field>
         </div>
       </Panel>
-      <Panel title="Transporter profiles">
-        <div className="network-grid">
-          {network.transporters.map((t) => (
-            <div className="network-card" key={t.id}>
-              <h3>{t.name}</h3>
-              <Badge value={t.verification} />
-              <p>
-                {t.capacity_kg} kg · {t.data.radius_km} km coverage
-              </p>
-              <small>
-                {t.data.handling_scope} · synthetic rate {t.data.rate_source}
-              </small>
+      {loading && <Empty>Loading organisations…</Empty>}
+      {error && <p role="alert">{error}</p>}
+      <div className="network-grid">
+        {profiles.map((p) => (
+          <article className="network-card" key={p.id}>
+            <div className="card-line">
+              <OrganisationAvatar profile={p} />
+              <Badge value={p.verification} />
             </div>
-          ))}
-        </div>
-      </Panel>
+            <h3>{p.display_name}</h3>
+            <p>{p.description || "Business description not provided."}</p>
+            <small>
+              {human(p.organisation_type)}
+              {p.regions.length ? " · " + p.regions.join(", ") : ""}
+            </small>
+            <div className="actions">
+              {p.roles.map((r) => (
+                <Badge key={r} value={r} />
+              ))}
+            </div>
+            <p className="muted">
+              {p.capabilities
+                .slice(0, 3)
+                .map((c) => human(c.name) + " (" + human(c.status) + ")")
+                .join(" · ") || "No capabilities declared yet."}
+            </p>
+            <button onClick={() => setSelected(p.id)}>
+              View Organisation Profile ↗
+            </button>
+          </article>
+        ))}
+      </div>
+      {!loading && !profiles.length && (
+        <Empty>
+          No organisations match these filters. Try a broader search.
+        </Empty>
+      )}
     </>
   );
 }

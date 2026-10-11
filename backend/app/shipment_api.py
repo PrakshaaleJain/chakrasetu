@@ -1,8 +1,9 @@
+from .auth import has_role
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select, text
 from . import models as m
 from .common import get, dump, fail, idem, audit, exception
-from .auth import current_user, role, can_view_asset
+from .auth import current_user
 from .db import get_db
 from .schemas import ShipmentEventIn, HubEventIn, TelemetryIn
 from .services.shipments import context, event, hub_event, closure_check
@@ -16,12 +17,12 @@ def shipment_access(db, user, s):
     orgs = [tx.seller_org_id, tx.buyer_org_id, t.organisation_id] + (
         [get(db, m.Facility, hub_id).organisation_id] if hub_id else []
     )
-    if user.role != "REVIEWER" and user.organisation_id not in orgs:
+    if not has_role(user, "REVIEWER") and user.organisation_id not in orgs:
         fail("FORBIDDEN", "Shipment access is restricted.", status=403)
 
 
 @router.get("/shipments")
-def shipments(db=Depends(get_db), user=Depends(current_user)):
+def shipments(db=Depends(get_db, scope="function"), user=Depends(current_user)):
     out = []
     for s in db.scalars(
         select(m.Shipment).order_by(m.Shipment.created_at.desc())
@@ -52,7 +53,7 @@ def shipments(db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.get("/shipments/{id}")
-def detail(id: str, db=Depends(get_db), user=Depends(current_user)):
+def detail(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     s = get(db, m.Shipment, id)
     shipment_access(db, user, s)
     return {
@@ -85,7 +86,7 @@ def detail(id: str, db=Depends(get_db), user=Depends(current_user)):
 def events(
     id: str,
     body: ShipmentEventIn,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -106,7 +107,7 @@ def events(
 def hub(
     id: str,
     body: HubEventIn,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -123,7 +124,10 @@ def hub(
 
 @router.post("/shipments/{id}/telemetry")
 def telemetry(
-    id: str, body: TelemetryIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: TelemetryIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     s = get(db, m.Shipment, id)
     shipment_access(db, user, s)

@@ -354,3 +354,32 @@ class ConsolidationMember(Record, Base):
     __tablename__ = "consolidation_members"
     consolidation_id: Mapped[str] = mapped_column(ForeignKey("consolidations.id"))
     shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), unique=True)
+
+
+from .security_models import (
+    Account,
+    Membership,
+    AuthSession,
+    RecoveryToken,
+    AuthAttempt,
+)
+from .circular_models import (
+    OperationCapability,
+    Assessment,
+    CircularItem,
+    TransformationJob,
+    JobInput,
+    JobOutput,
+    SecondLifeProduct,
+    ProductEvent,
+    RecyclingBatch,
+    BatchInput,
+    MaterialLot,
+    DownstreamHandoff,
+    HandoffTerms,
+    ItemCustodyEvent,
+    PathwayDecision,
+)
+from .circular_models import HandoffAllocation
+
+from .organisation_models import OrganisationAccount, CapabilityRequest

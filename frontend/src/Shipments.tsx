@@ -1,6 +1,7 @@
+import { hasRole } from "./navigation";
 import { useState } from "react";
 import type { Actor, Action, Shipment, Network } from "./types";
-import { useResource } from "./api";
+import { api, useResource } from "./api";
 import { Badge, Panel, Field, Empty, human, date } from "./components";
 const NEXT: Record<string, string[]> = {
   BOOKED: ["PICKUP_SCHEDULED", "CANCELLED"],
@@ -25,6 +26,7 @@ export function Shipments({
   version: number;
   network: Network;
 }) {
+  const [batchEconomics, setBatchEconomics] = useState<unknown | null>(null);
   const [batchIds, setBatchIds] = useState<string[]>([]);
   const [selected, setSelected] = useState("");
   const [target, setTarget] = useState("");
@@ -91,7 +93,7 @@ export function Shipments({
           onClick={() =>
             action("/consolidations", {
               shipment_ids: batchIds,
-              evidence: evidence || "Synthetic compatible batch proposal",
+              evidence: evidence || "Compatible batch proposal",
               reason: notes || "Compatible hub consolidation proposal",
             })
           }
@@ -104,6 +106,19 @@ export function Shipments({
               Manifest {b.id.slice(0, 8)} · {b.data.total_mass_kg} kg
             </strong>
             <Badge value={b.status} />
+            <button
+              onClick={async () => {
+                try {
+                  setBatchEconomics(
+                    await api("/consolidations/" + b.id + "/economics"),
+                  );
+                } catch (e) {
+                  setBatchEconomics({ error: (e as Error).message });
+                }
+              }}
+            >
+              Compare committed transport cost per battery
+            </button>
             <small>{b.data.notice}</small>
             <small>
               Approvals: {b.approvals.join(", ") || "none"}. Savings comparison
@@ -120,6 +135,11 @@ export function Shipments({
           </div>
         ))}
       </details>
+      {batchEconomics !== null && (
+        <Panel title="Batch economics · committed quotes, no invented savings">
+          <pre>{JSON.stringify(batchEconomics, null, 2)}</pre>
+        </Panel>
+      )}
       <div className="toolbar">
         <select
           value={s.id}
@@ -172,8 +192,8 @@ export function Shipments({
             physical handover parties must confirm pickup with evidence.
           </div>
           {choices.length > 0 &&
-            actor.role !== "REVIEWER" &&
-            actor.role !== "HUB" && (
+            !hasRole(actor, "REVIEWER") &&
+            !hasRole(actor, "HUB") && (
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -225,7 +245,9 @@ export function Shipments({
                         "REJECTED",
                         "RECEIVED_PENDING_INSPECTION",
                       ].map((x) => (
-                        <option key={x}>{x}</option>
+                        <option key={x} value={x}>
+                          {human(x)}
+                        </option>
                       ))}
                     </select>
                   </Field>
@@ -255,7 +277,7 @@ export function Shipments({
             )}
           {base.route.hub_id &&
             s.state === "IN_TRANSIT" &&
-            ["HUB", "TRANSPORTER"].includes(actor.role) && (
+            hasRole(actor, "HUB", "TRANSPORTER") && (
               <div>
                 <h4>Hub custody confirmations</h4>
                 <Field label="Hub handover evidence">
@@ -318,7 +340,7 @@ export function Shipments({
                     {name(c.previous_holder)} → {name(c.new_holder)}
                   </p>
                   <small>
-                    {date(c.created_at)} · actor {c.actor_id}
+                    {date(c.created_at)} · Recorded by {c.actor_id}
                   </small>
                   <p className="muted">{c.data.evidence}</p>
                 </div>
@@ -354,11 +376,11 @@ export function Shipments({
                   action("/shipments/" + s.id + "/telemetry", {
                     event: telemetry,
                     value: Number(value),
-                    notes: "Synthetic demonstration signal",
+                    notes: "Simulated telemetry signal",
                   });
                 }}
               >
-                <Field label="Synthetic telemetry event">
+                <Field label="Simulated telemetry update">
                   <select
                     value={telemetry}
                     onChange={(e) => setTelemetry(e.target.value)}
@@ -371,18 +393,20 @@ export function Shipments({
                       "MISSING_EVENT",
                       "REPORTED_INCIDENT",
                     ].map((x) => (
-                      <option key={x}>{x}</option>
+                      <option key={x} value={x}>
+                        {human(x)}
+                      </option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Synthetic value · km / minutes / °C / g as applicable">
+                <Field label="Reading · km / minutes / °C / g as applicable">
                   <input
                     type="number"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                   />
                 </Field>
-                <button>Emit labelled synthetic event</button>
+                <button>Record Simulated Update</button>
               </form>
             )}
         </Panel>

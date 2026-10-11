@@ -1,11 +1,22 @@
 """Start both real servers, verify frontend/proxy and run HTTP rehearsal; then stop."""
 
 from pathlib import Path
-import subprocess, sys, os, time, urllib.request, json, tempfile
+import subprocess, sys, os, time, urllib.request, json, tempfile, secrets
 
 root = Path(__file__).resolve().parent
 npm = "npm.cmd" if os.name == "nt" else "npm"
 processes = []
+# Run entirely against an isolated temporary database. Credentials are ephemeral.
+smoke_dir = tempfile.TemporaryDirectory()
+os.environ["DATABASE_URL"] = "sqlite:///" + str(Path(smoke_dir.name) / "smoke.db")
+os.environ["UPLOAD_DIR"] = str(Path(smoke_dir.name) / "uploads")
+os.environ["APP_ENV"] = "development"
+os.environ["CHAKRA_DEMO_PASSWORD"] = secrets.token_urlsafe(32)
+subprocess.run(
+    [sys.executable, "-m", "app.auth_bootstrap", "--demo"],
+    cwd=root / "backend",
+    check=True,
+)
 with tempfile.TemporaryDirectory() as log_dir:
     logs = []
     try:
@@ -51,7 +62,12 @@ with tempfile.TemporaryDirectory() as log_dir:
             "PASS real FastAPI health, Vite HTML/module serving and Vite → FastAPI proxy",
             flush=True,
         )
-        subprocess.run([sys.executable, "demo.py"], cwd=root / "backend", check=True)
+        subprocess.run(
+            [sys.executable, "circular_demo.py"], cwd=root / "backend", check=True
+        )
+        subprocess.run(
+            [sys.executable, "organisation_demo.py"], cwd=root / "backend", check=True
+        )
     except Exception:
         for log in logs:
             log.flush()
@@ -69,3 +85,5 @@ with tempfile.TemporaryDirectory() as log_dir:
                 process.kill()
         for log in logs:
             log.close()
+
+smoke_dir.cleanup()

@@ -38,6 +38,11 @@ def test_unknown_and_missing_are_not_safe(client):
         headers=auth("originator"),
         json={
             "internal_id": "incomplete",
+            "registration_title": "Existing regression battery",
+            "pbs": "L3",
+            "address": "Bengaluru",
+            "lat": 12.97,
+            "lng": 77.59,
             "owner_org_id": "org-fleet",
             "custodian_org_id": "org-fleet",
         },
@@ -45,7 +50,7 @@ def test_unknown_and_missing_are_not_safe(client):
     id = r.json()["id"]
     screen = client.post(f"/batteries/{id}/screen", headers=auth("originator")).json()
     assert screen["state"] == "REVIEW_REQUIRED"
-    assert screen["screen"] == "UNKNOWN"
+    assert screen["screen"] == "OWNER_REPORTED"
 
 
 def test_expiry_capacity_and_unknown_gates():

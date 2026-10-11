@@ -1,0 +1,58 @@
+{
+  "version": "explorer-values-1",
+  "source": "SCENARIO_ASSUMPTION",
+  "currency": "INR",
+  "perspective": "WHOLE_PATHWAY",
+  "basis": "NET_TRANSACTION",
+  "description": "Curated public-explorer comparison inputs; not marketplace offers or operational defaults.",
+  "pathways": {
+    "AUTOMOTIVE": {
+      "benefit_paise": 2200000,
+      "costs_paise": {
+        "diagnostics": 25000,
+        "repair": 25000,
+        "requalification": 25000,
+        "transport": 40000,
+        "maintenance": 25000,
+        "risk": 25000
+      }
+    },
+    "REFURBISHMENT": {
+      "benefit_paise": 1800000,
+      "costs_paise": {
+        "diagnostics": 25000,
+        "parts": 140000,
+        "labor": 25000,
+        "requalification": 25000,
+        "transport": 40000,
+        "warranty": 25000,
+        "risk": 25000
+      }
+    },
+    "SECOND_LIFE": {
+      "benefit_paise": 1500000,
+      "costs_paise": {
+        "assessment": 25000,
+        "transport": 40000,
+        "repurposing": 25000,
+        "integration": 25000,
+        "installation": 25000,
+        "maintenance": 25000,
+        "warranty": 25000,
+        "risk": 25000,
+        "end_of_service": 25000
+      }
+    },
+    "RECYCLING": {
+      "benefit_paise": 550000,
+      "costs_paise": {
+        "collection": 25000,
+        "transport": 40000,
+        "packaging": 25000,
+        "handling": 25000,
+        "processing": 25000,
+        "other": 25000
+      }
+    }
+  }
+}
