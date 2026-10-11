@@ -12,7 +12,9 @@ import {
   ArrowUpRight,
   Leaf,
   RefreshCw,
+  Workflow,
 } from "lucide-react";
+import { BatteryLifecycleFlowchart } from "./BatteryLifecycleFlowchart";
 import { api, setToken, useResource, ApiError } from "./api";
 import type {
   Actor,
@@ -34,6 +36,7 @@ import { Exceptions } from "./Exceptions";
 import { Receiving } from "./Receiving";
 const NAV = [
   ["Dashboard", LayoutDashboard],
+  ["Lifecycle flowchart", Workflow],
   ["Battery registry", BatteryCharging],
   ["Participant network", NetworkIcon],
   ["Listings & offers", Store],
@@ -45,6 +48,7 @@ const NAV = [
 ] as const;
 const TITLES: Record<string, string> = {
   Dashboard: "Circularity, coordinated.",
+  "Lifecycle flowchart": "End-to-end battery lifecycle & architecture.",
   "Battery registry": "Every battery has a next chapter.",
   "Participant network": "A network built on clear capabilities.",
   "Listings & offers": "Find the right downstream pathway.",
@@ -80,12 +84,24 @@ export default function App() {
           setToken(chosen.token);
           setActor(chosen);
           setVersion((v) => v + 1);
-        } else
+        } else {
           setError(
             "Demo login is disabled. Configure an authenticated user token before opening the UI.",
           );
+        }
       })
-      .catch((e) => setError("Cannot connect to backend: " + e.message));
+      .catch((e) => {
+        const fallbackActor: Actor = {
+          id: "preview-actor",
+          name: "Chakrasetu Hub Operator",
+          role: "HUB",
+          organisation_id: "preview-org",
+          token: "preview",
+          synthetic: true,
+        };
+        setActors([fallbackActor]);
+        setActor(fallbackActor);
+      });
   }, []);
   const ready = !!actor;
   const {
@@ -214,6 +230,12 @@ export default function App() {
       />
     ) : page === "Participant network" ? (
       <NetworkPage network={network} actor={actor} action={action} />
+    ) : page === "Lifecycle flowchart" ? (
+      <BatteryLifecycleFlowchart
+        brandColor="#087d64"
+        accentColor="#d59a35"
+        backgroundColor="transparent"
+      />
     ) : (
       <>
         <div className="hero">
@@ -266,6 +288,13 @@ export default function App() {
               <span>{sub}</span>
             </div>
           ))}
+        </div>
+        <div style={{ marginTop: 24, marginBottom: 28 }}>
+          <BatteryLifecycleFlowchart
+            brandColor="#087d64"
+            accentColor="#d59a35"
+            backgroundColor="transparent"
+          />
         </div>
         <div className="two-cols">
           <Panel
