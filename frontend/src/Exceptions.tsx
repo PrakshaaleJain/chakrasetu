@@ -1,3 +1,4 @@
+import { hasRole } from "./navigation";
 import { useState } from "react";
 import type { Action, Actor, ExceptionCase, Network } from "./types";
 import { Panel, Badge, Empty, Field, human, date } from "./components";
@@ -79,7 +80,7 @@ export function Exceptions({
               <summary>Evidence and review history</summary>
               <pre>{JSON.stringify(c.data, null, 2)}</pre>
             </details>
-            {actor.role === "REVIEWER" && c.status !== "CLOSED" && (
+            {hasRole(actor, "REVIEWER") && c.status !== "CLOSED" && (
               <>
                 <form
                   onSubmit={(e) => {
@@ -148,7 +149,9 @@ export function Exceptions({
                           "SCOPED_CLEARANCE",
                           "ESCALATE",
                         ].map((x) => (
-                          <option key={x}>{x}</option>
+                          <option key={x} value={x}>
+                            {human(x)}
+                          </option>
                         ))}
                       </select>
                     </Field>

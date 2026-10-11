@@ -33,7 +33,11 @@ def select_offer(db, user, offer):
         buyer_org_id=offer.buyer_org_id,
         facility_id=offer.facility_id,
         pathway=offer.pathway,
-        data={"synthetic": True, "selected_by": user.id, "quote_round": 1},
+        data={
+            "synthetic": bool(asset.data.get("synthetic", False)),
+            "selected_by": user.id,
+            "quote_round": 1,
+        },
     )
     db.add(tx)
     db.flush()

@@ -18,26 +18,6 @@ select,
 textarea {
   font: inherit;
 }
-:focus-visible {
-  outline: 3px solid #d59a35;
-  outline-offset: 3px;
-}
-.skip-link {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  z-index: 10000;
-  transform: translateY(-160%);
-  border-radius: 6px;
-  background: #fff;
-  color: #103c31;
-  border: 2px solid #087d64;
-  padding: 10px 14px;
-  font-weight: 700;
-}
-.skip-link:focus {
-  transform: translateY(0);
-}
 button {
   cursor: pointer;
   border: 1px solid #d5e0d9;
@@ -1181,13 +1161,81 @@ footer {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+.auth-shell {
+  max-width: 640px;
+  margin: 8vh auto;
+  padding: 24px;
 }
+.organisation-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: #f2f6f2;
+  flex-shrink: 0;
+}
+.organisation-logo.avatar {
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  font-weight: 700;
+  color: #087d64;
+}
+.organisation-heading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.organisation-heading h2 {
+  margin: 0 0 8px;
+}
+.contact-reveal {
+  margin-top: 22px;
+  border-top: 1px solid #e6ece7;
+  padding-top: 20px;
+}
+.contact-reveal dl {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+}
+.contact-reveal dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+details {
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #e2e9e4;
+  border-radius: 16px;
+  margin: 20px 0;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.evidence pre {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+  background: #f6f8f5;
+  padding: 16px;
+}
+.actions {
+  flex-wrap: wrap;
+}
+
+.nav-group {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  opacity: 0.65;
+  margin: 16px 16px 6px;
+}
+.sidebar nav button {
+  width: 100%;
+}
+/* PBS labels and selected text remain meaningful without color. */
+.pbs-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0}.pbs-card{display:flex;flex-direction:column;text-align:left;gap:10px;padding:16px;border:2px solid transparent;color:#172329;border-radius:12px;white-space:normal}.pbs-card span{font-size:.85rem;line-height:1.5}.pbs-card.L1{background:#daf3df}.pbs-card.L2{background:#e9f5d0}.pbs-card.L3{background:#fff0b3}.pbs-card.L4{background:#ffddba}.pbs-card.L5{background:#f9c8c8}.pbs-card.chosen{border-color:#172329;box-shadow:0 0 0 2px #fff inset}.pbs-card:focus-visible{outline:3px solid #2563eb;outline-offset:3px}summary{cursor:pointer;margin:16px 0;font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere}.intake-form h3{margin-top:24px}

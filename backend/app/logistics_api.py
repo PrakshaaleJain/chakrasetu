@@ -1,8 +1,9 @@
+from .auth import has_role
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, text
 from . import models as m
-from .auth import current_user, role, party, can_view_asset
-from .common import get, dump, fail, audit, idem, expired, exception, future
+from .auth import current_user, role, party
+from .common import get, dump, fail, audit, idem, expired, exception
 from .db import get_db
 from .schemas import QuoteIn, RouteSelect
 from .services.matching import generate_routes, validate_plan, transporter_check
@@ -14,16 +15,18 @@ router = APIRouter()
 
 
 @router.post("/transactions/{id}/route-plans")
-def plans(id: str, db=Depends(get_db), user=Depends(current_user)):
+def plans(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     tx = get(db, m.SaleTransaction, id)
     party(user, tx)
     return generate_routes(db, tx, user)
 
 
 @router.get("/transactions/{id}/route-plans")
-def list_plans(id: str, db=Depends(get_db), user=Depends(current_user)):
+def list_plans(
+    id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     tx = get(db, m.SaleTransaction, id)
-    if user.role not in ["TRANSPORTER", "HUB", "REVIEWER"]:
+    if not has_role(user, "TRANSPORTER", "HUB", "REVIEWER"):
         party(user, tx)
     return [
         dump(p)
@@ -36,7 +39,9 @@ def list_plans(id: str, db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.post("/route-plans/{id}/hub-approval")
-def approve_hub(id: str, db=Depends(get_db), user=Depends(current_user)):
+def approve_hub(
+    id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     role(user, "HUB")
     r = get(db, m.RoutePlan, id)
     if (
@@ -56,7 +61,12 @@ def approve_hub(id: str, db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.post("/transactions/{id}/transport-quotes")
-def quote(id: str, body: QuoteIn, db=Depends(get_db), user=Depends(current_user)):
+def quote(
+    id: str,
+    body: QuoteIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
+):
     role(user, "TRANSPORTER")
     tx = get(db, m.SaleTransaction, id)
     route = get(db, m.RoutePlan, body.route_id)
@@ -86,7 +96,7 @@ def quote(id: str, body: QuoteIn, db=Depends(get_db), user=Depends(current_user)
         data={
             **body.model_dump(mode="json"),
             "scope": route.data["scope"],
-            "synthetic": True,
+            "synthetic": get(db, m.Organisation, user.organisation_id).synthetic,
             "currency": "INR",
             "distance_source": "HAVERSINE_PROXY",
             "eta_source": "PROXY_NOT_COMMITMENT",
@@ -103,16 +113,22 @@ def quote(id: str, body: QuoteIn, db=Depends(get_db), user=Depends(current_user)
 
 
 @router.get("/transactions/{id}/transport-quotes")
-def quotes(id: str, db=Depends(get_db), user=Depends(current_user)):
+def quotes(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     tx = get(db, m.SaleTransaction, id)
     rows = db.scalars(
         select(m.TransportQuote).where(m.TransportQuote.transaction_id == id)
     ).all()
-    if user.role in ["ORIGINATOR", "BUYER"]:
-        party(user, tx)
-    elif user.role not in ["REVIEWER", "TRANSPORTER"]:
+    commercial_party = user.organisation_id in [
+        tx.seller_org_id,
+        tx.buyer_org_id,
+    ] and has_role(user, "ORIGINATOR", "BUYER")
+    if not commercial_party and not has_role(user, "REVIEWER", "TRANSPORTER"):
         fail("FORBIDDEN", "Quote access is restricted.", status=403)
-    if user.role == "TRANSPORTER":
+    if (
+        has_role(user, "TRANSPORTER")
+        and not commercial_party
+        and not has_role(user, "REVIEWER")
+    ):
         rows = [
             q
             for q in rows
@@ -125,7 +141,7 @@ def quotes(id: str, db=Depends(get_db), user=Depends(current_user)):
 @router.post("/quotes/{id}/accept", response_model=EntityResponse)
 def accept(
     id: str,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -143,7 +159,7 @@ def accept(
 def reservation(
     id: str,
     body: RouteSelect,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -161,7 +177,7 @@ def reservation(
 @router.post("/transactions/{id}/shipments", response_model=EntityResponse)
 def booking(
     id: str,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -177,12 +193,14 @@ def booking(
 
 
 @router.post("/transactions/{id}/release-capacity")
-def released(id: str, db=Depends(get_db), user=Depends(current_user)):
+def released(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     return dump(release(db, user, get(db, m.SaleTransaction, id)))
 
 
 @router.post("/transactions/{id}/quote-round/close")
-def close_round(id: str, db=Depends(get_db), user=Depends(current_user)):
+def close_round(
+    id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     tx = get(db, m.SaleTransaction, id)
     party(user, tx)
     if db.scalar(select(m.Shipment).where(m.Shipment.transaction_id == id)):
@@ -219,7 +237,7 @@ def close_round(id: str, db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.post("/transactions/{id}/quote-round/reopen")
-def reopen(id: str, db=Depends(get_db), user=Depends(current_user)):
+def reopen(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     tx = get(db, m.SaleTransaction, id)
     party(user, tx)
     if tx.logistics_status != "NO_ACCEPTANCE":
@@ -233,9 +251,11 @@ def reopen(id: str, db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.get("/transactions/{id}/route-diagnostics")
-def diagnostics(id: str, db=Depends(get_db), user=Depends(current_user)):
+def diagnostics(
+    id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     tx = get(db, m.SaleTransaction, id)
-    if user.role != "REVIEWER":
+    if not has_role(user, "REVIEWER"):
         party(user, tx)
     row = db.scalar(
         select(m.AuditEvent)

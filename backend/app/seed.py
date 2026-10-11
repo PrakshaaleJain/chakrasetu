@@ -1,5 +1,7 @@
 """Deterministic synthetic network. Reset only through explicit CLI --reset."""
 
+import secrets
+
 import argparse, hashlib
 from sqlalchemy import select
 from .db import Base, engine, SessionLocal
@@ -29,6 +31,12 @@ DEMO_ACTORS = [
 
 def seed(db):
     if db.get(m.Organisation, "org-fleet"):
+        from .circular_seed import seed_circular
+
+        seed_circular(db)
+        from .registration_seed import seed_acceptance
+
+        seed_acceptance(db)
         return
     orgs = [
         ("org-fleet", "Setu Fleet Collective", "ORIGINATOR"),
@@ -66,7 +74,7 @@ def seed(db):
                 name=name,
                 role=role,
                 organisation_id=org,
-                token_hash=hashlib.sha256(f"demo-{id}-local-only".encode()).hexdigest(),
+                token_hash="disabled-" + secrets.token_hex(32),
                 data={"synthetic": True},
             )
         )
@@ -171,9 +179,9 @@ def seed(db):
                 lng=lng,
                 active=id != "fac-closed",
                 registration="EXPIRED" if id == "fac-expired" else "VERIFIED",
-                valid_until=future(minutes=-1)
-                if id == "fac-expired"
-                else future(days=365),
+                valid_until=(
+                    future(minutes=-1) if id == "fac-expired" else future(days=365)
+                ),
                 data={
                     "synthetic": True,
                     "window_start": future(minutes=1),
@@ -200,21 +208,25 @@ def seed(db):
                     data={
                         "declared_chemistries": chem,
                         "verified_chemistries": chem,
-                        "forms": ["PACK", "MODULE", "UNKNOWN"]
-                        if kind == "REVIEW"
-                        else ["PACK", "MODULE"],
-                        "conditions": [
-                            "WORKING",
-                            "DEGRADED",
-                            "NON_FUNCTIONAL",
-                            "DAMAGED_REPORTED",
-                            "UNKNOWN",
-                        ]
-                        if kind == "REVIEW"
-                        else ["WORKING", "DEGRADED", "NON_FUNCTIONAL"],
-                        "handling_scope": "CONTROLLED_HANDLING"
-                        if kind == "REVIEW"
-                        else "ORDINARY",
+                        "forms": (
+                            ["PACK", "MODULE", "UNKNOWN"]
+                            if kind == "REVIEW"
+                            else ["PACK", "MODULE"]
+                        ),
+                        "conditions": (
+                            [
+                                "WORKING",
+                                "DEGRADED",
+                                "NON_FUNCTIONAL",
+                                "DAMAGED_REPORTED",
+                                "UNKNOWN",
+                            ]
+                            if kind == "REVIEW"
+                            else ["WORKING", "DEGRADED", "NON_FUNCTIONAL"]
+                        ),
+                        "handling_scope": (
+                            "CONTROLLED_HANDLING" if kind == "REVIEW" else "ORDINARY"
+                        ),
                         "required_docs": ["TRANSFER_AUTHORITY"],
                         "synthetic": True,
                     },
@@ -235,12 +247,14 @@ def seed(db):
                 valid_until=future(days=365),
                 data={
                     "synthetic": True,
-                    "handling_scope": "CONTROLLED_HANDLING"
-                    if id == "trans-special"
-                    else "ORDINARY",
-                    "chemistries": ["LFP", "NMC", "NCA", "UNKNOWN"]
-                    if id == "trans-special"
-                    else ["LFP", "NMC", "NCA"],
+                    "handling_scope": (
+                        "CONTROLLED_HANDLING" if id == "trans-special" else "ORDINARY"
+                    ),
+                    "chemistries": (
+                        ["LFP", "NMC", "NCA", "UNKNOWN"]
+                        if id == "trans-special"
+                        else ["LFP", "NMC", "NCA"]
+                    ),
                     "forms": ["PACK", "MODULE"],
                     "center": [12.97, 77.59],
                     "radius_km": 250,
@@ -248,9 +262,9 @@ def seed(db):
                     "window_end": future(days=90),
                     "rate_paise_per_km": rate,
                     "fixed_paise": 50000,
-                    "rate_source": "SYNTHETIC_CONFIGURED_RATE_CARD"
-                    if rate
-                    else "UNKNOWN",
+                    "rate_source": (
+                        "SYNTHETIC_CONFIGURED_RATE_CARD" if rate else "UNKNOWN"
+                    ),
                 },
             )
         )
@@ -321,8 +335,10 @@ def seed(db):
                 },
             )
         )
-    if not db.get(m.SchemaVersion, 1):
-        db.add(m.SchemaVersion(version=1))
+    if not db.get(m.SchemaVersion, 4):
+        for old in db.scalars(select(m.SchemaVersion)):
+            db.delete(old)
+        db.add(m.SchemaVersion(version=4))
     db.commit()
     from .services.intake import screen
 
@@ -334,6 +350,13 @@ def seed(db):
         )
     db.commit()
 
+    from .circular_seed import seed_circular
+
+    seed_circular(db)
+    from .registration_seed import seed_acceptance
+
+    seed_acceptance(db)
+
 
 def main():
     args = argparse.ArgumentParser()
@@ -341,10 +364,12 @@ def main():
     opts = args.parse_args()
     if opts.reset:
         Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    from .migrations import migrate
+
+    migrate(engine)
     with SessionLocal() as db:
         seed(db)
-    print("Synthetic demo database initialised (schema v1).")
+    print("Synthetic demo database initialised (schema v4).")
 
 
 if __name__ == "__main__":

@@ -1,33 +1,59 @@
 """Repeatable real-HTTP demonstration. Start backend; run after seed/reset."""
 
-import argparse, json, urllib.request, urllib.error, uuid
+import argparse, json, urllib.request, urllib.error, urllib.parse, uuid, os, http.cookiejar, getpass
 from datetime import datetime, timezone, timedelta
 
 
 def run(base):
+    password = os.getenv("CHAKRA_DEMO_PASSWORD") or getpass.getpass(
+        "Explicitly provisioned local demo password: "
+    )
+    sessions = {}
+
+    def session(actor):
+        if actor not in sessions:
+            jar = http.cookiejar.CookieJar()
+            opener = urllib.request.build_opener(
+                urllib.request.HTTPCookieProcessor(jar)
+            )
+            req = urllib.request.Request(
+                base + "/auth/login",
+                data=json.dumps(
+                    {"email": actor + "@demo.chakrasetu.local", "password": password}
+                ).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            with opener.open(req):
+                pass
+            csrf = next(c.value for c in jar if c.name == "chakra_csrf")
+            sessions[actor] = (opener, csrf)
+        return sessions[actor]
+
     def call(actor, path, body=None, expected=200, key=None, method=None):
         request = urllib.request.Request(
             base + path,
-            data=json.dumps(body).encode()
-            if body is not None
-            else (b"{}" if method == "POST" else None),
+            data=(
+                json.dumps(body).encode()
+                if body is not None
+                else (b"{}" if method == "POST" else None)
+            ),
             method=method or ("POST" if body is not None else "GET"),
             headers={
-                "Authorization": f"Bearer demo-{actor}-local-only",
+                "X-CSRF-Token": session(actor)[1],
                 "Content-Type": "application/json",
                 "Idempotency-Key": key or uuid.uuid4().hex,
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with session(actor)[0].open(request, timeout=20) as response:
                 status = response.status
                 result = json.load(response)
         except urllib.error.HTTPError as e:
             status = e.code
             result = json.load(e)
-        assert status == expected, (
-            f"{path}: expected {expected}, got {status}: {result}"
-        )
+        assert (
+            status == expected
+        ), f"{path}: expected {expected}, got {status}: {result}"
         return result
 
     def future(days):
@@ -54,6 +80,10 @@ def run(base):
         "/batteries",
         {
             "internal_id": "HTTP-DEMO-" + uuid.uuid4().hex[:6],
+            "registration_title": "HTTP demonstration battery",
+            "pbs": "L1",
+            "application_type": "TWO_WHEELER",
+            "collection_availability": "YES",
             "owner_org_id": "org-fleet",
             "custodian_org_id": "org-fleet",
             "chemistry": "LFP",
@@ -85,11 +115,11 @@ def run(base):
         base + "/batteries/" + a["id"] + "/evidence",
         data=form,
         headers={
-            "Authorization": "Bearer demo-originator-local-only",
+            "X-CSRF-Token": session("originator")[1],
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
-    with urllib.request.urlopen(request) as response:
+    with session("originator")[0].open(request) as response:
         e = json.load(response)
     post(
         "reviewer",
@@ -98,6 +128,15 @@ def run(base):
             "status": "VERIFIED",
             "reason": "Mock transfer mandate reviewed",
             "evidence": "Synthetic ownership reference",
+        },
+    )
+    post("originator", "/batteries/" + a["id"] + "/confirm-transfer-authority")
+    post(
+        "reviewer",
+        "/batteries/" + a["id"] + "/registration-review",
+        {
+            "decision": "APPROVED",
+            "reason": "Synthetic registration information reviewed",
         },
     )
     assert (
@@ -308,6 +347,8 @@ def run(base):
             }
         )
     )
+
+    return a["id"]
 
 
 if __name__ == "__main__":

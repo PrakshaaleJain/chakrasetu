@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, event
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from .config import DATABASE_URL
 
@@ -26,6 +27,15 @@ def get_db():
         try:
             yield db
             db.commit()
+        except SQLAlchemyError:
+            db.rollback()
+            from .common import fail
+
+            fail(
+                "DATABASE_WRITE_FAILED",
+                "The database operation did not complete. Refresh and retry; no successful save has been confirmed.",
+                status=503,
+            )
         except Exception:
             db.rollback()
             raise

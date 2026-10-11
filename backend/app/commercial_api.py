@@ -1,3 +1,4 @@
+from .auth import has_role
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from . import models as m
@@ -13,10 +14,12 @@ router = APIRouter()
 
 
 @router.post("/listings", response_model=EntityResponse)
-def create(body: ListingIn, db=Depends(get_db), user=Depends(current_user)):
+def create(
+    body: ListingIn, db=Depends(get_db, scope="function"), user=Depends(current_user)
+):
     asset = get(db, m.BatteryAsset, body.asset_id)
     seller(user, asset)
-    ordinary(asset)
+    ordinary(asset, require_authority=False)
     if asset.state != "READY_FOR_LISTING":
         fail(
             "STATE_TRANSITION_INVALID", "Asset must be screened and ready for listing."
@@ -33,7 +36,11 @@ def create(body: ListingIn, db=Depends(get_db), user=Depends(current_user)):
         asset_id=asset.id,
         seller_org_id=user.organisation_id,
         expires_at=body.expires_at.isoformat(),
-        data={**body.model_dump(mode="json"), "currency": "INR", "synthetic": True},
+        data={
+            **body.model_dump(mode="json"),
+            "currency": "INR",
+            "synthetic": bool(asset.data.get("synthetic", False)),
+        },
     )
     db.add(listing)
     db.flush()
@@ -43,19 +50,19 @@ def create(body: ListingIn, db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.get("/listings")
-def listings(db=Depends(get_db), user=Depends(current_user)):
+def listings(db=Depends(get_db, scope="function"), user=Depends(current_user)):
     results = []
     for l in db.scalars(select(m.Listing).order_by(m.Listing.created_at.desc())).all():
         asset = get(db, m.BatteryAsset, l.asset_id)
-        own = user.organisation_id == l.seller_org_id or user.role == "REVIEWER"
+        own = user.organisation_id == l.seller_org_id or has_role(user, "REVIEWER")
         eligible = (
             [
                 c
-                for c in eligible_buyers(db, asset)
+                for c in eligible_buyers(db, asset, discovery=True)
                 if c["eligible"]
                 and c["facility"]["organisation_id"] == user.organisation_id
             ]
-            if user.role == "BUYER"
+            if has_role(user, "BUYER")
             else []
         )
         if own or eligible:
@@ -76,24 +83,32 @@ def listings(db=Depends(get_db), user=Depends(current_user)):
 
 
 @router.get("/listings/{id}/eligible-buyers")
-def buyers(id: str, db=Depends(get_db), user=Depends(current_user)):
+def buyers(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     listing = get(db, m.Listing, id)
     asset = get(db, m.BatteryAsset, listing.asset_id)
-    if user.organisation_id != listing.seller_org_id and user.role != "REVIEWER":
+    if user.organisation_id != listing.seller_org_id and not has_role(user, "REVIEWER"):
         fail(
             "FORBIDDEN",
             "Exclusions are visible to the seller and reviewer.",
             status=403,
         )
-    return eligible_buyers(db, asset)
+    return eligible_buyers(db, asset, discovery=True)
 
 
 @router.post("/listings/{id}/offers", response_model=EntityResponse)
-def offer(id: str, body: OfferIn, db=Depends(get_db), user=Depends(current_user)):
+def offer(
+    id: str,
+    body: OfferIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
+):
     role(user, "BUYER")
     listing = get(db, m.Listing, id)
     asset = get(db, m.BatteryAsset, listing.asset_id)
     ordinary(asset)
+    from .services.matching import require_transfer
+
+    require_transfer(db, asset)
     facility = get(db, m.Facility, body.facility_id)
     if facility.organisation_id != user.organisation_id:
         fail("FORBIDDEN", "You can offer only for your facility.", status=403)
@@ -121,12 +136,14 @@ def offer(id: str, body: OfferIn, db=Depends(get_db), user=Depends(current_user)
         data={
             **data,
             "currency": "INR",
-            "synthetic": True,
+            "synthetic": bool(asset.data.get("synthetic", False)),
             "basis": "PER_ASSET_RECORD",
             "tax_treatment": "Included as declared",
-            "net_estimate_status": "INCOMPLETE"
-            if any(v is None for v in body.costs.values())
-            else "COMPLETE",
+            "net_estimate_status": (
+                "INCOMPLETE"
+                if any(v is None for v in body.costs.values())
+                else "COMPLETE"
+            ),
         },
     )
     db.add(obj)
@@ -136,21 +153,21 @@ def offer(id: str, body: OfferIn, db=Depends(get_db), user=Depends(current_user)
 
 
 @router.get("/listings/{id}/offers")
-def offers(id: str, db=Depends(get_db), user=Depends(current_user)):
+def offers(id: str, db=Depends(get_db, scope="function"), user=Depends(current_user)):
     listing = get(db, m.Listing, id)
     rows = db.scalars(select(m.Offer).where(m.Offer.listing_id == id)).all()
     return [
         dump(o)
         for o in rows
         if user.organisation_id in [listing.seller_org_id, o.buyer_org_id]
-        or user.role == "REVIEWER"
+        or has_role(user, "REVIEWER")
     ]
 
 
 @router.post("/offers/{id}/accept", response_model=EntityResponse)
 def accept(
     id: str,
-    db=Depends(get_db),
+    db=Depends(get_db, scope="function"),
     user=Depends(current_user),
     idempotency_key: str = Header(default=""),
 ):
@@ -165,7 +182,7 @@ def accept(
 
 
 @router.get("/transactions")
-def transactions(db=Depends(get_db), user=Depends(current_user)):
+def transactions(db=Depends(get_db, scope="function"), user=Depends(current_user)):
     out = []
     for tx in db.scalars(
         select(m.SaleTransaction).order_by(m.SaleTransaction.created_at.desc())
@@ -173,7 +190,7 @@ def transactions(db=Depends(get_db), user=Depends(current_user)):
         visible = can_view_asset(db, user, get(db, m.BatteryAsset, tx.asset_id))
         if (
             not visible
-            and user.role == "TRANSPORTER"
+            and has_role(user, "TRANSPORTER")
             and tx.status == "AGREED_PENDING_LOGISTICS"
         ):
             # Shared quote request subset excludes sale price/evidence/private identity.
@@ -193,24 +210,28 @@ def transactions(db=Depends(get_db), user=Depends(current_user)):
             out.append(
                 {
                     **dump(tx),
-                    "terms": dump(current_terms(db, tx))
-                    if user.role != "TRANSPORTER"
-                    else None,
+                    "terms": (
+                        dump(current_terms(db, tx))
+                        if not has_role(user, "TRANSPORTER")
+                        else None
+                    ),
                     "asset": {
                         "internal_id": asset.internal_id,
                         "state": asset.state,
                         "current_holder_org_id": asset.current_holder_org_id,
                     },
-                    "terms_history": [
-                        dump(t)
-                        for t in db.scalars(
-                            select(m.TermsVersion)
-                            .where(m.TermsVersion.transaction_id == tx.id)
-                            .order_by(m.TermsVersion.version)
-                        ).all()
-                    ]
-                    if user.role in ["BUYER", "ORIGINATOR", "REVIEWER"]
-                    else [],
+                    "terms_history": (
+                        [
+                            dump(t)
+                            for t in db.scalars(
+                                select(m.TermsVersion)
+                                .where(m.TermsVersion.transaction_id == tx.id)
+                                .order_by(m.TermsVersion.version)
+                            ).all()
+                        ]
+                        if has_role(user, "BUYER", "ORIGINATOR", "REVIEWER")
+                        else []
+                    ),
                 }
             )
     return out
@@ -218,14 +239,20 @@ def transactions(db=Depends(get_db), user=Depends(current_user)):
 
 @router.post("/transactions/{id}/confirm", response_model=EntityResponse)
 def confirmation(
-    id: str, body: ConfirmIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: ConfirmIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     return dump(confirm(db, user, get(db, m.SaleTransaction, id), body.version))
 
 
 @router.post("/transactions/{id}/amend", response_model=EntityResponse)
 def amendment(
-    id: str, body: AmendmentIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: AmendmentIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     return dump(amend(db, user, get(db, m.SaleTransaction, id), body))
 
@@ -244,7 +271,10 @@ class RescheduleIn(Schema):
 
 @router.post("/transactions/{id}/reschedule")
 def reschedule(
-    id: str, body: RescheduleIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: RescheduleIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     tx = get(db, m.SaleTransaction, id)
     party(user, tx)
@@ -307,7 +337,10 @@ class CancellationIn(Schema):
 
 @router.post("/transactions/{id}/cancel")
 def cancel(
-    id: str, body: CancellationIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: CancellationIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     tx = get(db, m.SaleTransaction, id)
     party(user, tx)
@@ -355,7 +388,10 @@ class ListingManageIn(Schema):
 
 @router.post("/listings/{id}/manage")
 def manage_listing(
-    id: str, body: ListingManageIn, db=Depends(get_db), user=Depends(current_user)
+    id: str,
+    body: ListingManageIn,
+    db=Depends(get_db, scope="function"),
+    user=Depends(current_user),
 ):
     l = get(db, m.Listing, id)
     asset = get(db, m.BatteryAsset, l.asset_id)

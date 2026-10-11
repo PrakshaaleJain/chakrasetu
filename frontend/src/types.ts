@@ -3,7 +3,16 @@ export interface Actor {
   name: string;
   role: string;
   organisation_id: string;
-  token: string;
+  selected_role?: string;
+  roles?: string[];
+  email?: string;
+  platform_admin?: boolean;
+  memberships?: {
+    id: string;
+    organisation_id: string;
+    organisation_name: string;
+    roles: string[];
+  }[];
   synthetic: boolean;
 }
 // Domain records mirror API columns; data carries versioned input snapshots and evidence metadata.
@@ -27,6 +36,11 @@ export interface Battery extends RecordBase {
   current_holder_org_id: string;
   originator_org_id: string;
   authority_confirmed: boolean;
+  handling_concern?: {
+    required_pbs_capability: string | null;
+    source: string;
+    notice: string;
+  };
   evidence?: Evidence[];
   dispositions?: RecordBase[];
 }
@@ -127,6 +141,7 @@ export interface Reason {
   next_action?: string;
 }
 export interface Candidate {
+  status?: string;
   facility: Facility;
   pathway: string;
   eligible: boolean;

@@ -1,3 +1,4 @@
+import { hasRole } from "./navigation";
 import { useState } from "react";
 import type {
   Actor,
@@ -35,9 +36,7 @@ export function Routes({
   const [chosen, setChosen] = useState("");
   const [total, setTotal] = useState("4200");
   const [status, setStatus] = useState("SUBMITTED");
-  const [evidence, setEvidence] = useState(
-    "Synthetic all-inclusive quote, all legs and disclosed costs.",
-  );
+  const [evidence, setEvidence] = useState("");
   const tx = transactions.find((t) => t.id === selection) || transactions[0];
   const { data: plans } = useResource<Route[]>(
     tx ? "/transactions/" + tx.id + "/route-plans" : null,
@@ -45,7 +44,7 @@ export function Routes({
     [],
   );
   const { data: quotes } = useResource<Quote[]>(
-    tx && actor.role !== "HUB"
+    tx && !hasRole(actor, "HUB")
       ? "/transactions/" + tx.id + "/transport-quotes"
       : null,
     version,
@@ -98,7 +97,7 @@ export function Routes({
             className="primary"
             onClick={() => action("/transactions/" + tx.id + "/route-plans")}
           >
-            Generate route alternatives
+            Find Available Transport Routes
           </button>
         )}
       </div>
@@ -109,8 +108,8 @@ export function Routes({
         <RouteMap routes={current.slice(0, 2)} network={network} />
         <p className="notice">
           Distance: Haversine × 1.3 proxy. Travel time: 30 km/h assumption.
-          Synthetic rates are estimates; booking needs an explicitly submitted
-          and accepted quote.
+          Configured rate cards are estimates; booking requires a submitted and
+          accepted quote.
         </p>
         <div className="route-grid">
           {current.length === 0 ? (
@@ -149,7 +148,7 @@ export function Routes({
                   </span>
                   <span>
                     <strong>{money(p.estimated_cost_paise)}</strong>
-                    <small>synthetic rate estimate</small>
+                    <small>Estimated Transport Cost</small>
                   </span>
                 </div>
                 <ol className="legs">
@@ -190,7 +189,7 @@ export function Routes({
                           : "HUB_APPROVAL_REQUIRED"
                       }
                     />
-                    {actor.role === "HUB" && !p.data.hub_approved_by && (
+                    {hasRole(actor, "HUB") && !p.data.hub_approved_by && (
                       <button
                         onClick={() =>
                           action("/route-plans/" + p.id + "/hub-approval")
@@ -220,7 +219,7 @@ export function Routes({
                 </strong>
                 {r.reasons?.map((x: any, n: number) => (
                   <p key={n}>
-                    <code>{x.code}</code> {x.message}
+                    <strong>{human(x.code)}</strong> {x.message}
                   </p>
                 ))}
               </div>
@@ -228,8 +227,8 @@ export function Routes({
           </details>
         )}
       </Panel>
-      {actor.role === "TRANSPORTER" && route && (
-        <Panel title="Submit transport response · synthetic demonstration">
+      {hasRole(actor, "TRANSPORTER") && route && (
+        <Panel title="Submit Transport Offer">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -252,7 +251,9 @@ export function Routes({
                   onChange={(e) => setStatus(e.target.value)}
                 >
                   {["SUBMITTED", "DECLINED", "NO_RESPONSE"].map((s) => (
-                    <option key={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {human(s)}
+                    </option>
                   ))}
                 </select>
               </Field>
@@ -283,7 +284,7 @@ export function Routes({
           </form>
         </Panel>
       )}
-      {actor.role !== "HUB" && (
+      {!hasRole(actor, "HUB") && (
         <Panel
           title="Quotes and booking"
           aside={
@@ -294,8 +295,8 @@ export function Routes({
         >
           {quotes.length === 0 ? (
             <Empty>
-              No transport responses. Switch to the transporter demo actor to
-              submit an actual response.
+              No transport offers yet. Eligible transporters can submit an
+              actual response.
             </Empty>
           ) : (
             quotes.map((q) => (

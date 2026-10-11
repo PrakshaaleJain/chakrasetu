@@ -1,3 +1,4 @@
+from ..config import APP_ENV
 from math import radians, sin, cos, atan2, sqrt
 from datetime import datetime
 from sqlalchemy import select
@@ -36,7 +37,13 @@ def active_reservations(db, resource_type, resource_id, start, end, exclude_tx=N
 
 
 def available(db, kind, id, cap, start, end, exclude_tx=None):
-    return cap - active_reservations(db, kind, id, start, end, exclude_tx)
+    from .downstream import allocations
+
+    return (
+        cap
+        - active_reservations(db, kind, id, start, end, exclude_tx)
+        - allocations(db, kind, id, start, end)
+    )
 
 
 def service_valid(valid_until, end):
@@ -44,6 +51,18 @@ def service_valid(valid_until, end):
 
 
 def handling_scope(asset):
+    if asset.data.get("pbs"):
+        from .registration import level, routing_reasons
+
+        if routing_reasons(asset):
+            return "UNREVIEWED"
+        if (
+            level(asset) <= "L3"
+            and asset.condition != "DAMAGED_REPORTED"
+            and not any(v == "YES" for v in asset.data.get("flags", {}).values())
+            and not asset.data.get("registration", {}).get("specialist_review_required")
+        ):
+            return "ORDINARY"
     flags = asset.data.get("flags", {})
     if (
         len(flags) == 11
@@ -62,7 +81,12 @@ def handling_scope(asset):
     return "UNREVIEWED"
 
 
-def ordinary(asset):
+def ordinary(asset, require_authority=True):
+    from .registration import routing_reasons
+
+    reasons = routing_reasons(asset)
+    if reasons:
+        fail(reasons[0]["code"], reasons[0]["message"])
     # This gate permits ordinary movement or separately approved, scoped controlled handling.
     if asset.state in [
         "HOLD",
@@ -82,17 +106,22 @@ def ordinary(asset):
             "SAFETY_FLAG_PRESENT",
             "A valid scoped qualified report is required; ordinary movement is blocked.",
         )
-    if not asset.authority_confirmed:
+    if require_authority and not asset.authority_confirmed:
         fail("TRANSFER_AUTHORITY_UNCONFIRMED", "Transfer authority is unconfirmed.")
 
 
-def facility_check(db, asset, facility, pathway, exclude_tx=None):
+def facility_check(db, asset, facility, pathway, exclude_tx=None, discovery=False):
     reasons = []
 
     def reject(code, msg):
         reasons.append({"code": code, "message": msg, "blocking": True})
 
     org = get(db, m.Organisation, facility.organisation_id)
+    if APP_ENV == "production" and (org.synthetic or asset.data.get("synthetic")):
+        reject(
+            "SYNTHETIC_DISABLED",
+            "Synthetic assets and participants cannot support production matching.",
+        )
     start = asset.data.get("window_start") or future(days=1)
     end = asset.data.get("window_end") or future(days=2)
     if not org.active or org.verification != "VERIFIED":
@@ -131,6 +160,9 @@ def facility_check(db, asset, facility, pathway, exclude_tx=None):
             "capability_id": None,
         }
     cap = caps[0]
+    from .registration import acceptance_reasons
+
+    reasons.extend(acceptance_reasons(asset, cap, str(pathway)))
     if cap.verification != "VERIFIED" or not service_valid(cap.valid_until, end):
         reject(
             "REGISTRATION_INVALID_OR_EXPIRED",
@@ -178,22 +210,40 @@ def facility_check(db, asset, facility, pathway, exclude_tx=None):
         for x in db.scalars(
             select(m.EvidenceDocument).where(m.EvidenceDocument.asset_id == asset.id)
         ).all()
-        if x.review_status == "VERIFIED" or x.kind != "TRANSFER_AUTHORITY"
+        if not x.data.get("removed")
+        and (x.review_status == "VERIFIED" or x.kind != "TRANSFER_AUTHORITY")
     }
     for kind in cap.data.get("required_docs", []):
+        if discovery and kind == "TRANSFER_AUTHORITY":
+            continue
         if kind not in docs:
             reject("DOCUMENT_MISSING", f"Required evidence {kind} is missing.")
-    if not asset.authority_confirmed:
-        reject("TRANSFER_AUTHORITY_UNCONFIRMED", "Transfer authority is unconfirmed.")
+    missing = {"VALUE_UNKNOWN", "DOCUMENT_MISSING", "HANDLING_CAPABILITY_UNVERIFIED"}
     return {
+        "status": (
+            "ELIGIBLE"
+            if not reasons
+            else (
+                "INFORMATION_REQUIRED"
+                if all(r["code"] in missing for r in reasons)
+                else "EXCLUDED"
+            )
+        ),
         "facility": dump(facility),
         "eligible": not reasons,
         "reasons": reasons,
         "capability_id": cap.id,
+        "conditions": (
+            [
+                "Reviewed transfer authority is required before commercial commitment and dispatch."
+            ]
+            if discovery
+            else []
+        ),
     }
 
 
-def eligible_buyers(db, asset, pathway=None, exclude_tx=None):
+def eligible_buyers(db, asset, pathway=None, exclude_tx=None, discovery=False):
     results = []
     for f in db.scalars(
         select(m.Facility)
@@ -217,7 +267,9 @@ def eligible_buyers(db, asset, pathway=None, exclude_tx=None):
         for path in paths:
             results.append(
                 {
-                    **facility_check(db, asset, f, path, exclude_tx),
+                    **facility_check(
+                        db, asset, f, path, exclude_tx, discovery=discovery
+                    ),
                     "pathway": path,
                     "rule_version": RULE_VERSION,
                 }
@@ -235,7 +287,20 @@ def transporter_check(db, asset, t, points, exclude_tx=None):
             {"code": "TRANSPORTER_SCOPE_MISMATCH", "message": msg, "blocking": True}
         )
 
+    from .registration import acceptance_reasons
+
+    reasons.extend(acceptance_reasons(asset, t, "TRANSPORT"))
+    if asset.data.get("pbs") and asset.condition not in t.data.get("conditions", []):
+        reasons.append(
+            {
+                "code": "CONDITION_MISMATCH",
+                "message": "Transporter condition acceptance does not cover this report.",
+                "blocking": True,
+            }
+        )
     org = get(db, m.Organisation, t.organisation_id)
+    if APP_ENV == "production" and (org.synthetic or asset.data.get("synthetic")):
+        reject("Synthetic assets and carriers cannot support production movement.")
     if (
         not org.active
         or org.verification != "VERIFIED"
@@ -278,6 +343,10 @@ def route_scope(asset, tx, points):
         "form": asset.form,
         "condition": asset.condition,
         "pathway": tx.pathway,
+        "reported_pbs": asset.data.get("pbs"),
+        "application_type": asset.data.get("application_type"),
+        "collection_availability": asset.data.get("collection_availability"),
+        "registration_revision": asset.data.get("registration", {}).get("revision"),
         "window_start": asset.data.get("window_start"),
         "window_end": asset.data.get("window_end"),
         "points": points,
@@ -289,6 +358,7 @@ def route_scope(asset, tx, points):
 def validate_plan(db, tx, route, exclude_tx=None):
     asset = get(db, m.BatteryAsset, tx.asset_id)
     ordinary(asset)
+    require_transfer(db, asset)
     if (
         route.transaction_id != tx.id
         or route.terms_version != tx.terms_version
@@ -320,6 +390,7 @@ def generate_routes(db, tx, user):
         )
     asset = get(db, m.BatteryAsset, tx.asset_id)
     ordinary(asset)
+    require_transfer(db, asset)
     if (
         asset.mass_kg is None
         or asset.lat is None
@@ -433,7 +504,7 @@ def generate_routes(db, tx, user):
                     "name": t.name,
                     "estimated_cost_paise": cost,
                     "source": t.data.get("rate_source"),
-                    "synthetic": True,
+                    "synthetic": bool(t.data.get("synthetic", False)),
                 }
             )
             if cost is not None:
@@ -457,12 +528,12 @@ def generate_routes(db, tx, user):
                 "scope": route_scope(asset, tx, points),
                 "transporters": transporters,
                 "capability_ids": [check["capability_id"]] if hub else [],
-                "source": "SYNTHETIC_CONFIGURED_RATE_CARD"
-                if cost is not None
-                else "UNKNOWN",
-                "cost_status": "COMPLETE_ESTIMATE"
-                if cost is not None
-                else "INCOMPLETE",
+                "source": (
+                    "SYNTHETIC_CONFIGURED_RATE_CARD" if cost is not None else "UNKNOWN"
+                ),
+                "cost_status": (
+                    "COMPLETE_ESTIMATE" if cost is not None else "INCOMPLETE"
+                ),
                 "rule_version": RULE_VERSION,
                 "warnings": [
                     "Distance is a Haversine × 1.3 proxy, not verified road distance.",
@@ -509,9 +580,9 @@ def generate_routes(db, tx, user):
         p.data = {
             **p.data,
             "ranking": {
-                "objective": "COST_TIME_HANDLING"
-                if complete
-                else "TIME_HANDLING_UNCERTAINTY",
+                "objective": (
+                    "COST_TIME_HANDLING" if complete else "TIME_HANDLING_UNCERTAINTY"
+                ),
                 "weights": {
                     "cost": 0.60 if complete else 0,
                     "time": 0.25 if complete else 0.80,
@@ -549,3 +620,19 @@ def generate_routes(db, tx, user):
         "rejected": rejected,
         "rule_version": RULE_VERSION,
     }
+
+
+def require_transfer(db, asset):
+    evidence = db.scalars(
+        select(m.EvidenceDocument).where(m.EvidenceDocument.asset_id == asset.id)
+    ).all()
+    if not asset.authority_confirmed or not any(
+        e.kind == "TRANSFER_AUTHORITY"
+        and e.review_status == "VERIFIED"
+        and not e.data.get("removed")
+        for e in evidence
+    ):
+        fail(
+            "TRANSFER_AUTHORITY_UNCONFIRMED",
+            "Confirmed transfer authority and current operator-reviewed evidence are required for commercial commitment and dispatch.",
+        )

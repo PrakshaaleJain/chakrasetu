@@ -232,7 +232,7 @@ def book(db, user, tx):
         route_id=route.id,
         quote_id=quote.id,
         data={
-            "synthetic": True,
+            "synthetic": bool(asset.data.get("synthetic", False)),
             "handover_confirmations": {},
             "hub_stage": "AWAITING_INBOUND" if route.hub_id else "DIRECT",
             "terms_version": tx.terms_version,
